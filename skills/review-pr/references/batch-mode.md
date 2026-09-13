@@ -48,7 +48,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 ## Automatic posting
 
-After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post all surviving findings with `REQUEST_CHANGES` and a clean review with `APPROVE`. For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR.
+After every subagent returns, post each completed review in list order through the single-PR GitHub posting flow. For another author's PR, post all surviving findings with `REQUEST_CHANGES` and a clean review with `APPROVE`. For a self-review, post the complete result with `COMMENT`. Invoke `preflight-mutations` separately for each PR immediately before its first mutation, using the batch `/review-pr` request as the authorization source. Reconcile and record each result before moving to the next PR. Record each PR's reconciled `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` (or `not posted (<reason>)` when nothing landed) and carry it into that PR's `**Review URL**` line and the consolidated posting-status entry.
 
 A posting failure never asks immediately. Record the exact partial GitHub state and the recovery choices from `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` as `recovery-pending`, then continue with every untouched PR.
 
@@ -66,7 +66,7 @@ After automatic posting has attempted every completed review and recorded each c
 <one row per PR; "review failed" rows included>
 
 ## Posting status
-<one entry per PR: posted request-changes, posted approve, posted self-review comment, review failed, posting failed, or recovery-pending>
+<one entry per PR: posted request-changes + review URL, posted approve + review URL, posted self-review comment + review URL, review failed, posting failed, or recovery-pending>
 
 ## Pending review context (<count>)
 <one entry per review-only checkpoint that could not be resolved, such as:
