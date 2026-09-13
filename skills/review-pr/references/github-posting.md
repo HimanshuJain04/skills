@@ -129,6 +129,8 @@ line is not.
 - **Line-level (REST, Phase A)**: `{"path": "<file>", "line": <post-image>, "side": "RIGHT", "body": "<markdown>"}`. Goes into the `comments` array of the REST review creation call.
 - **File-level (GraphQL, Phase B)**: `path: "<file>"`, `subjectType: FILE`, `body: "<markdown>"`, `pullRequestReviewId: <node_id from Phase A>`. GitHub doesn't anchor code for file-level threads. Include a brief code reference in the body (e.g., "near the `<symbol>` definition").
 
+**Never load bodies with `-f body=@file`.** The `@path` file-reading convention works only with `-F/--field`; `-f/--raw-field` posts the literal `@...` string, which renders as a dead link instead of the finding. This happened live on gastrosmart/GSM3#6274, where twenty threads posted as `@/var/...` paths and had to be rewritten with PATCH. Build bodies with `jq --arg` as in Step 4, or assemble the payload in Python and pipe it via `--input -`.
+
 ---
 
 ## Step 3: Pre-posting hunk validation
