@@ -75,7 +75,9 @@ The cleanup result is authoritative only when the exact pending review node is a
 
 **Monolithic publication write-back**: freeze the authoritative match as `publication_evidence` with `publication_mode: monolithic`, the exact review database and node IDs, author, head SHA, GitHub state, verdict, complete-body SHA-256, every surviving finding ID, and verification timestamp. Merge it into `$CACHE_FILE` with `contract_version: REVIEW_CACHE_CONTRACT_VERSION`, `last_posted_review_id`, `last_posted_review_node_id`, `last_posted_verdict`, `last_posted_at`, `last_posted_finding_ids`, and `publication_evidence`; preserve existing `posted_comments` only as historical ownership records because a monolithic review creates no per-finding threads. A later run must not treat those entries as owned by the monolithic review. Follow `${CLAUDE_SKILL_DIR}/references/finding-state-phase4.md` "Phase 4: write back" for every surviving finding, then merge the same `publication_evidence` as a top-level `publication` block in `$STATE_FILE`, preserving its `findings` and `convergence` blocks. Write both files atomically. A failed write-back is reported and blocks convergence; publication already landed, so never repost it.
 
+`gh pr review` returns no review ID, so after the authoritative match, read the reconciled database ID from that match and build `REVIEW_URL="https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>"`. Print it as the `**Review URL**` line. When the user aborts or no review lands, print `not posted (<reason>)` instead.
+
 **On "Abort"**: require authoritative cleanup read-back, then stop. Report `reconcile-required` instead of claiming an abort when cleanup is unresolved.
 
-**On "Show payload"**: print the offending JSON/mutation. Do NOT clean up. User explicitly chose to keep the draft. Print the pending review URL.
+**On "Show payload"**: print the offending JSON/mutation. Do NOT clean up. User explicitly chose to keep the draft. Print the pending review URL as `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` and carry it into the `**Review URL**` line with a `(pending draft)` suffix.
 
