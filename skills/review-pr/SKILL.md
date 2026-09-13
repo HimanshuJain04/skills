@@ -500,6 +500,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Round**: <CURRENT_ROUND> (<active>/<resolved>/<dismissed> findings carried across rounds)
 **Convergence**: <N> new · <C> caused by earlier fixes · <R> regressions reopened · <F> carried
 **Thread coverage**: <threaded>/<surviving> findings as review threads<; reason when below full>
+**Review URL**: <https://github.com/<owner>/<repo>/pull/<number>#pullrequestreview-<REVIEW_DB_ID> | not posted (<reason>)>
 <trend line, omit at round 1>
 
 ## Summary
@@ -533,6 +534,16 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
 Terminal output must include Filtered out. It shows when the critic over-filters. Include multi-round status when `PRIOR_STATE.findings` is non-empty.
+
+### Review URL
+
+Always print the **Review URL** line last in the header block, after posting/recovery settles, so the user can open the submitted review in one click. Build it from the reconciled review database ID:
+
+```
+REVIEW_URL="https://github.com/<owner>/<repo>/pull/<number>#pullrequestreview-<REVIEW_DB_ID>"
+```
+
+Use the fresh review's `REVIEW_DB_ID` from Phase C, the reused review's `PRIOR_REVIEW_DB_ID` on the rolling path, or the reconciled ID from the monolithic recovery write-back. When nothing was posted (abort, block, keep-local, keep-draft), print `not posted (<reason>)` instead of a URL. A run that blocks or aborts before posting still prints the block with the reason.
 
 ### Thread coverage
 
