@@ -357,5 +357,5 @@ After Step 8 reconciles, build the clickable review URL from the reconciled data
 REVIEW_URL="https://github.com/<owner>/<repo>/pull/<number>#pullrequestreview-$REVIEW_DB_ID"
 ```
 
-Use `REVIEW_DB_ID` for a fresh review, or `PRIOR_REVIEW_DB_ID` (copied into `REVIEW_DB_ID`) when `ROLLING_PATH=true`. Never print a URL from an unreconciled mutation response alone; the Phase C read-back or the Step 4-rolling authoritative body match is what confirms the ID. When the run posts nothing, print `not posted (<reason>)` instead.
+Use `REVIEW_DB_ID` for a fresh review, or `PRIOR_REVIEW_DB_ID` (copied into `REVIEW_DB_ID`) when `ROLLING_PATH=true`. Never print a URL from an unreconciled mutation response alone; the Phase C read-back or the Step 4-rolling authoritative body match is what confirms the ID. When the user keeps a pending draft, print the pending review URL with a `(pending draft)` suffix. When the run posts nothing, print `not posted (<reason>)` instead.
 

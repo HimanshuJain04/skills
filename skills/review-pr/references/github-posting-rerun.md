@@ -145,7 +145,7 @@ else
 fi
 ```
 
-After every rolling update result, fetch the prior review authoritatively by `PRIOR_REVIEW_NODE_ID`. Only an exact complete-body match with the frozen new summary records the update landed, sets `ATTACHED_THREADS=0` and `ROLLING_PATH=true`, and proceeds directly to Step 8. Step 0 already proved that no new thread is needed, and existing threads on that review remain attached. `REVIEW_DB_ID` is the reused `PRIOR_REVIEW_DB_ID` here, so Step 9 in `${CLAUDE_SKILL_DIR}/references/github-posting.md` still prints `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` for the updated review.
+After every rolling update result, fetch the prior review authoritatively by `PRIOR_REVIEW_NODE_ID`. Only an exact complete-body match with the frozen new summary records the update landed: set `REVIEW_NODE_ID="$PRIOR_REVIEW_NODE_ID"`, `REVIEW_DB_ID="$PRIOR_REVIEW_DB_ID"`, `ATTACHED_THREADS=0` and `ROLLING_PATH=true`, then proceed directly to Step 8. The IDs are assigned here on the authoritative-match path regardless of whether the mutation response was ambiguous, so Step 8 never caches stale ownership and Step 9 never builds a URL from it. Step 0 already proved that no new thread is needed, and existing threads on that review remain attached. Step 9 in `${CLAUDE_SKILL_DIR}/references/github-posting.md` then prints `https://github.com/<owner>/<repo>/pull/<num>#pullrequestreview-<REVIEW_DB_ID>` for the updated review.
 
 If the complete body still equals the guarded old body, set `ROLLING_PATH=false` and `FRESH_REVIEW_FALLBACK=true`; only that confirmed-not-landed state permits a fresh review. Any other body, missing target, or inconclusive read-back remains `reconcile-required` and blocks posting.
 
