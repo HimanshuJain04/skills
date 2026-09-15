@@ -113,7 +113,7 @@ When the run tests an API or endpoint and not only a click path, I build a test 
 
 Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and its own authenticated context. I reuse the Step 2 browser session one of two ways: export its cookies and anti-CSRF token into `curl` calls, or run each request through the app's own `fetch` inside the page with the driver's evaluate hook, which carries the session cookie and CSRF header for me. Plain unauthenticated `curl` is enough only when the endpoint needs no session. I never accept an unauthenticated response as a case result; when I cannot obtain the authenticated context I report the lane blocked instead of testing the wrong thing. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3 before I dispatch it. Screenshots and the recording do not apply when no UI is exercised, so the captured request and response are the evidence for each case.
 
-I capture the environment once so the run is reproducible, and every case row carries its exact params so a reader can rerun it. I use PASS or FAIL text in the Result column, never a check emoji.
+I capture the environment once so the run is reproducible, and every case row records the complete rerunnable request, its path, query, body, and any non-secret headers, not query params alone. Before I write any request or response value I redact credentials, session tokens, auth headers, cookies, and personal data, and keep only the functional evidence a case needs, counts, IDs, statuses, and error messages. I use PASS or FAIL text in the Result column, never a check emoji.
 
 ### Report template
 
@@ -130,9 +130,9 @@ I capture the environment once so the run is reproducible, and every case row ca
 
 #### <Category> Tests
 
-| # | Test | Params | Result | Expected |
-|---|------|--------|--------|----------|
-| 1 | <case> | `<query params>` | PASS/FAIL: <actual observed> | <expected> |
+| # | Test | Request | Result | Expected |
+|---|------|---------|--------|----------|
+| 1 | <case> | `<path, query, body; secrets redacted>` | PASS/FAIL: <actual observed> | <expected> |
 
 #### Error Handling Tests
 
