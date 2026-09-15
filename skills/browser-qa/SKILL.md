@@ -109,7 +109,9 @@ The recording path above is the handoff to `file-pr`, which attaches it at PR cr
 
 ## QA Test Results report (endpoint and API QA)
 
-When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly with curl or the app's own fetch under the authenticated session and record the actual response against the expected one. A case with no captured response is a FAIL, never an assumed pass. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3.
+When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case with no captured response is a FAIL, never an assumed pass.
+
+Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and its own authenticated context. I reuse the Step 2 browser session one of two ways: export its cookies and anti-CSRF token into `curl` calls, or run each request through the app's own `fetch` inside the page with the driver's evaluate hook, which carries the session cookie and CSRF header for me. Plain unauthenticated `curl` is enough only when the endpoint needs no session. I never accept an unauthenticated response as a case result; when I cannot obtain the authenticated context I report the lane blocked instead of testing the wrong thing. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3 before I dispatch it. Screenshots and the recording do not apply when no UI is exercised, so the captured request and response are the evidence for each case.
 
 I capture the environment once so the run is reproducible, and every case row carries its exact params so a reader can rerun it. I use PASS or FAIL text in the Result column, never a check emoji.
 
@@ -130,7 +132,7 @@ I capture the environment once so the run is reproducible, and every case row ca
 
 | # | Test | Params | Result | Expected |
 |---|------|--------|--------|----------|
-| 1 | <case> | `<query params>` | <actual observed> | <expected> |
+| 1 | <case> | `<query params>` | PASS/FAIL: <actual observed> | <expected> |
 
 #### Error Handling Tests
 
