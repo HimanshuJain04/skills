@@ -109,7 +109,7 @@ The recording path above is the handoff to `file-pr`, which attaches it at PR cr
 
 ## QA Test Results report (endpoint and API QA)
 
-When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case with no captured response is a FAIL, never an assumed pass.
+When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case whose request I dispatched but which captured no response is a FAIL, never an assumed pass.
 
 Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and authenticated context.
 
@@ -120,11 +120,11 @@ A credentialed request in either lane must be HTTPS unless its host is written a
 I get that context one of two ways, and both run those checks first:
 
 - `curl` with the Step 2 session exported into it, its cookies plus the anti-CSRF token. I leave `-L` off every credentialed request so curl follows nothing on its own, then read `Location` myself and run the origin check on that hop before I re-issue with credentials. That is what keeps the session on one host, because curl replays both a `-b "name=value"` string and a `-H "Cookie:"` header to every host a redirect names. I carry the session in a host-scoped cookie jar with `-b jar.txt`; when the jar's cookie domain does not cover an approved endpoint origin I set an explicit `Cookie` header for that one origin instead, and never a bare `-b "name=value"` string, which unlike the jar carries no domain of its own and so survives any copy onto the next host. Plain unauthenticated `curl` is enough only when the endpoint needs no session.
-- An in-page request through the driver's evaluate hook. The page the hook runs in has to clear the origin check too, because a `fetch` is same-origin to whatever page is open and the browser attaches the session cookie on its own. A same-origin `fetch` adds no anti-CSRF header, so I either call the app's own request helper, the client it already uses for API calls, which attaches the token, or read the anti-CSRF token from the cookie or meta tag and set it in `RequestInit.headers`. A cross-origin request also needs `credentials: "include"` and matching CORS. `fetch` follows redirects on its own and carries both a manually set anti-CSRF header and any cookie the destination is eligible for, and a 307 or 308 resends the method and body as well, so I set `redirect: "error"` on every evaluate-hook request whether or not it carries credentials. That turns a redirect into a network error with no `Location` this lane can read, so I record such a case BLOCKED rather than FAIL and rerun it through the curl lane, which sees each hop and re-runs the origin check before reissuing.
+- An in-page request through the driver's evaluate hook. The page the hook runs in has to clear the origin check too, because a `fetch` is same-origin to whatever page is open and the browser attaches the session cookie on its own. A same-origin `fetch` adds no anti-CSRF header, so I either call the app's own request helper, the client it already uses for API calls, which attaches the token, or read the anti-CSRF token from the cookie or meta tag and set it in `RequestInit.headers`. A cross-origin request also needs `credentials: "include"` and matching CORS. `fetch` follows redirects on its own and carries both a manually set anti-CSRF header and any cookie the destination is eligible for, and a 307 or 308 resends the method and body as well, so I set `redirect: "error"` on every evaluate-hook request whether or not it carries credentials. That turns a redirect into a network error with no `Location` this lane can read, so I score nothing here and rerun the case through the curl lane, which sees each hop and re-runs the origin check before reissuing. That run gives the case its one verdict, under the same BLOCKED rule as every other case.
 
 I never accept an unauthenticated response as a case result; when I cannot obtain the authenticated context I record those cases BLOCKED instead of testing the wrong thing. An endpoint case that mutates shared data goes through the same mutation preflight as Step 3 before I dispatch it. Screenshots and the recording do not apply when no UI is exercised, so the captured request and response are the evidence for each case.
 
-I capture the environment once so the run is reproducible, and every case row records the complete request inputs, its path, query, body, and any non-secret headers, not query params alone. Replay reuses a freshly provisioned Step 2 session for auth, so the row never carries it: before I write any request or response value I redact credentials, session tokens, auth headers, cookies, and personal data, and keep only the functional evidence a case needs, counts, IDs, statuses, and error messages. I use PASS or FAIL text in the Result column, never a check emoji.
+I capture the environment once so the run is reproducible, and every case row records the complete request inputs, its path, query, body, and any non-secret headers, not query params alone. Replay reuses a freshly provisioned Step 2 session for auth, so the row never carries it: before I write any request or response value I redact credentials, session tokens, auth headers, cookies, and personal data, and keep only the functional evidence a case needs, counts, IDs, statuses, and error messages. I use PASS, FAIL, or BLOCKED text in the Result column, never a check emoji.
 
 ### Report template
 
@@ -145,13 +145,13 @@ I capture the environment once so the run is reproducible, and every case row re
 
 | # | Test | Request | Result | Expected |
 |---|------|---------|--------|----------|
-| 1 | <case> | `<path, query, body, safe headers; secrets redacted>` | PASS/FAIL: <actual observed> | <expected> |
+| 1 | <case> | `<path, query, body, safe headers; secrets redacted>` | PASS/FAIL/BLOCKED: <actual observed, or the blocker> | <expected> |
 
 #### Error Handling Tests
 
 | # | Test | Request | Expected | Result |
 |---|------|---------|----------|--------|
-| N | <bad input> | `<path, query, body, safe headers; secrets redacted>` | <status and message> | PASS/FAIL: <observed status and message> |
+| N | <bad input> | `<path, query, body, safe headers; secrets redacted>` | <status and message> | PASS/FAIL/BLOCKED: <observed status and message, or the blocker> |
 
 ### Browser UI Testing
 - <what rendered, with screenshot paths under .qa/>
@@ -163,4 +163,4 @@ I capture the environment once so the run is reproducible, and every case row re
 VERDICT: <ALL PASS | PARTIAL | FAIL | BLOCKED> (<passed>/<executed> cases, <blocked> blocked)
 ```
 
-I keep one table per category and add only the categories the endpoint has. A case I could not execute is BLOCKED, never PASS or FAIL: I list it with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases ran, or BLOCKED when none could. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.
+I keep one table per category and add only the categories the endpoint has. A case whose request I never dispatched is BLOCKED, never PASS or FAIL, and so is a case the unauthenticated-response rule above blocks. A request counts as dispatched once its bytes left the client, so a refused connection or a failed DNS lookup is not dispatched. I list a blocked case with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases executed, or BLOCKED when none did. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.
