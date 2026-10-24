@@ -471,11 +471,10 @@ GitHub enforces an invisible secondary limit on request volume and cost, separat
 
 ### UI code review
 
-After completing any UI work, review it against all 3 guideline sets below and apply the feedback. Give all three lenses to one subagent. They read the same components, so three agents would triple the file loading to produce one merged list.
+After completing any UI work, review it against both guideline sets below and apply the feedback. Give both lenses to one subagent. They read the same components, so two agents would double the file loading to produce one merged list.
 
 1. `/web-interface-guidelines`
-2. `/ui-skills`
-3. `/rams`
+2. `/rams`
 
 ## Next.js rules
 

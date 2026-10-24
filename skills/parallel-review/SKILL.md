@@ -20,7 +20,7 @@ I run every reviewer at once over the local diff and merge what they find into o
 
 I name the roster first, then launch every member in parallel with the Agent tool.
 
-Members 1-3 below are `subagent_type` values, and I pass them to the Agent tool as-is. Member 4 is a skill-running agent. `/web-interface-guidelines`, `/ui-skills`, and `/rams` are skills, not agent types, so they cannot go as `subagent_type`. I dispatch a `general-purpose` agent that invokes them instead.
+Members 1-3 below are `subagent_type` values, and I pass them to the Agent tool as-is. Member 4 is a skill-running agent. `/web-interface-guidelines` and `/rams` are skills, not agent types, so they cannot go as `subagent_type`. I dispatch a `general-purpose` agent that invokes them instead.
 
 I size the roster to the diff before I name it. `done` runs this skill after every task, so an unsized roster charges a one-line fix what a rewrite costs. I measure the Step 1 scope with `git diff --shortstat HEAD -- <paths>` when files were specified, or bare `git diff --shortstat HEAD` when they were not.
 
@@ -37,7 +37,7 @@ Always on the roster:
 I add to the roster when the condition holds:
 
 3. Silent Failure Hunter with `subagent_type: "pr-review-toolkit:silent-failure-hunter"`. I add it when the diff touches error handling, try-catch, or fallback logic.
-4. UI Review Agent with `subagent_type: "general-purpose"`. I add it when the diff touches frontend or UI code. I prompt it to invoke `/web-interface-guidelines`, `/ui-skills`, and `/rams` against the diff and return their merged findings.
+4. UI Review Agent with `subagent_type: "general-purpose"`. I add it when the diff touches frontend or UI code. I prompt it to invoke `/web-interface-guidelines` and `/rams` against the diff and return their merged findings.
 
 The shared prompt, plus the per-agent lens, reads "Review these changed files for bugs, logic errors, and adherence to project CLAUDE.md conventions: [files]. The review target is [scope diff command] only, the Step 1 scope or the fix delta. The comparison base, [merge-base SHA], is context for the product-intent check alone: `git show [merge-base SHA]:<file>` is what the base branch has."
 
