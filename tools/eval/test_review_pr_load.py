@@ -21,24 +21,28 @@ import unittest
 import review_pr_load
 import review_pr_tokens
 
-CORPUS_CEILING = 197970
+CORPUS_CEILING = 213492
 CEILINGS = {
-    "parallel-standard/round-1": (140277, 140277, 15),
-    "parallel-chunked/round-1": (141812, 141812, 15),
-    "parallel-standard/with-step6-reload": (140277, 149053, 15),
+    "parallel-standard/round-1": (152413, 152413, 15),
+    "parallel-chunked/round-1": (153948, 153948, 15),
+    "parallel-standard/with-step6-reload": (152413, 164685, 15),
 }
-DELTA_CEILINGS = {"delta_distinct": 5857, "delta_with_repeats": 5857,
+DELTA_CEILINGS = {"delta_distinct": 5755, "delta_with_repeats": 5755,
                   "network": 0}
-CHUNK_REVIEWER_CEILING = (29979, 29979)
+SECURITY_DELTA_CEILINGS = {"delta_distinct": 3344, "delta_with_repeats": 3344,
+                           "network": 0}
+CHUNK_REVIEWER_CEILING = (30137, 30137)
 SUBAGENT_CEILINGS = {
     "silent-failure-hunter": (0, 0),
     "cross-cutting": (5938, 5938),
+    "security-reviewer": (9406, 9406),
 }
-XREPO_REVIEWER_CEILING = (32597, 32597)
+XREPO_REVIEWER_CEILING = (32755, 32755)
 PROMPT_CEILINGS = {
-    "chunk-reviewer-prompt": 9517,
+    "chunk-reviewer-prompt": 9675,
     "silent-failure-hunter-prompt": 342,
     "cross-cutting-prompt": 1535,
+    "security-reviewer-prompt": 3344,
     "verifier-prompt": 5596,
 }
 
@@ -61,7 +65,8 @@ class LoadCeilingTest(unittest.TestCase):
 
     def test_no_unceilinged_path(self):
         self.assertEqual(set(self.rep["paths"]),
-                         set(CEILINGS) | {"any/round-2-delta"})
+                         set(CEILINGS) | {"any/round-2-delta",
+                                          "any/security-reviewer-delta"})
         for name in CEILINGS:
             with self.subTest(path=name):
                 self.assertEqual(set(self.rep["paths"][name]),
@@ -69,12 +74,25 @@ class LoadCeilingTest(unittest.TestCase):
                                   "network"})
         self.assertEqual(set(self.rep["paths"]["any/round-2-delta"]),
                          set(DELTA_CEILINGS))
+        self.assertEqual(set(self.rep["paths"]["any/security-reviewer-delta"]),
+                         set(SECURITY_DELTA_CEILINGS))
 
     def test_round2_row_is_a_delta(self):
         cells = self.rep["paths"]["any/round-2-delta"]
         for metric, ceiling in DELTA_CEILINGS.items():
             with self.subTest(metric=metric):
                 self.assertLessEqual(cells[metric], ceiling)
+
+    def test_security_row_is_a_delta(self):
+        cells = self.rep["paths"]["any/security-reviewer-delta"]
+        for metric, ceiling in SECURITY_DELTA_CEILINGS.items():
+            with self.subTest(metric=metric):
+                self.assertLessEqual(cells[metric], ceiling)
+
+    def test_security_delta_is_security_prompt(self):
+        cells = self.rep["paths"]["any/security-reviewer-delta"]
+        self.assertEqual(cells["delta_distinct"],
+                         self.rep["sizes"]["security-prompt.md"])
 
     def test_subagent_refs_within_ceilings(self):
         for role, (distinct, repeated) in SUBAGENT_CEILINGS.items():

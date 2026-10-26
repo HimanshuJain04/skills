@@ -2,7 +2,7 @@
 
 ### Subagent 1: Claude reviewer (`general-purpose`)
 
-Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode. Derive it from the SKILL.md location through any symlink; never hardcode a path. Subagents inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. The same substitution applies to Subagent 3 and to the Phase 3 verifiers.
+Substitute `<SKILL_DIR>` throughout the prompt before use, in every mode. Derive it from the SKILL.md location through any symlink; never hardcode a path. Subagents inherit the user's repo as their working directory, so a bare `references/...` path resolves against that repo and silently finds nothing. The same substitution applies to Subagents 3 and 4 and to the Phase 3 verifiers.
 
 #### Prompt substitutions
 
@@ -12,8 +12,8 @@ Substitute the block as written, with `<SKILL_DIR>` already resolved. `<DIFF_FIL
 `<TIMELINE_FILE>`, and `<REPO_MAP_FILE>` take the staged paths from the end of Phase 1
 at each dispatch that names them.
 
-**`<PROMPT_PREAMBLE>`**: opens Subagent 1, Subagent 3 and V3, the three prompts that emit
-findings. Each of them follows it with its own one-line statement of whether it closes on a
+**`<PROMPT_PREAMBLE>`**: opens Subagent 1, Subagent 3, Subagent 4 and V3, the four prompts that
+emit findings. Each of them follows it with its own one-line statement of whether it closes on a
 run-level verdict:
 
 ```text
@@ -31,7 +31,7 @@ convention and the run-level closing block. Emit every finding in exactly that s
 shape is unparseable to the Phase 3 critic and is dropped.
 ```
 
-**`<GROUND_TRUTH>`**. Opens Subagent 1 and Subagent 2. Prior findings live in the staged timeline file, not pasted here:
+**`<GROUND_TRUTH>`**. Opens Subagent 1, Subagent 2 and Subagent 4. Prior findings live in the staged timeline file, not pasted here:
 
 ```text
 ## Ground truth

@@ -74,9 +74,9 @@ Build a lean summary body (NO "Filtered out" section, internal only). **Always**
 *Details in review comments below.*  <!-- omit if ALL findings are body-fallback -->
 ```
 
-When there are zero findings, replace the findings table and details line with `### Findings\nNo findings.` The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review. Exception: on the blocked-by-open-threads path from Phase 3 step 8, the body lists the blocking open threads instead of `No findings.` and posts `REQUEST_CHANGES` (`COMMENT` for a self-review).
+When there are zero introduced findings, replace the findings table and details line with `### Findings\nNo findings.`, and list any pre-existing findings under `### Pre-existing` in the same table shape, still posted as threads. The body posts with `APPROVE` for another author's PR or `COMMENT` for a self-review. Exception: on the blocked-by-open-threads path from Phase 3 step 8, the body lists the blocking open threads instead of `No findings.` and posts `REQUEST_CHANGES` (`COMMENT` for a self-review), with pre-existing findings listed in the body and no threads.
 
-**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor`. Only include levels that have findings.
+**Severity count badges**: `🔴 <N> Critical · 🟠 <M> Serious · 🟡 <K> Moderate · 🔵 <J> Minor`. Only include levels that have findings. They count `Origin: introduced` findings only; append `· ⚪ <P> Pre-existing` when any finding carries that origin. Pre-existing rows in the findings table put `pre-existing` after the severity emoji.
 
 **Finding numbering**: assign sequential IDs by severity: `C1, C2…` Critical, `S1, S2…` Serious, `M1, M2…` Moderate, `m1, m2…` Minor. Use these IDs consistently in the summary table and review comments. **Note**: per-round visible labels (M3, S1, etc.) do NOT have to match across rounds. Internal stability comes from the `findings[].id` hash in `.claude/review-state/<pr>.yml` (see `references/finding-state-schema.md`).
 
@@ -103,7 +103,7 @@ Every finding status is exactly one of `active`, `resolved` (with commit SHA), `
 Each finding with a valid file reference becomes a review comment. Format as self-contained markdown:
 
 ```markdown
-<severity-emoji> **<Severity>** · <Category>
+<severity-emoji> **<Severity>** · <Category>< · Pre-existing>
 
 **<Issue one-sentence>**
 
@@ -119,6 +119,8 @@ Each finding with a valid file reference becomes a review comment. Format as sel
 ```
 
 Severity emojis: 🔴 Critical, 🟠 Serious, 🟡 Moderate, 🔵 Minor.
+
+The ` · Pre-existing` suffix appears only on `Origin: pre-existing` findings. Their body also ends with `<!-- review-pr:origin=pre-existing -->`, which Phase 1 reads to keep the thread out of `OPEN_BLOCKERS`, and adds one line after the header: `This line predates the PR (blame <short-sha>), so it does not block this review. It gets its own issue.` Step 8c links the issue once it exists.
 
 **Inverse risk and Class-sites are not decoration.** They are the two cascade fields Phase 3
 steps 4.56 and 4.55 derived, and `/fix-pr-review` seeds its own inverse-risk check and class
@@ -347,7 +349,19 @@ gh api graphql -f query='
 
 Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a thread via `reviewThreads.nodes[].comments.nodes[0].databaseId`; take that thread's `id` as `github_thread_id`.
 
-### 8c. Update `.claude/review-state/<pr>.yml`
+### 8c. Track pre-existing findings in their own issues
+
+Covers every finding posted this round with `Origin: pre-existing`, plus every prior state entry with `origin: pre-existing` and no `tracking_issue`, which is how a failed filing gets retried, plus every entry still at `origin: pre-existing` with a `tracking_issue` whose thread is still unresolved, which reuses that URL and redoes only step 3. An entry reactivated as `introduced` keeps its old URL as history but never enters this set, so its blocking thread stays open. Dedupe the set by finding `id`. Skip when it is empty. For each:
+
+1. Invoke `file-issue` for the PR's repository. The issue names the file, line, blame commit, and the finding's issue, why, and suggested fix, and links the review thread as the place it was found. When `file-issue` resolves it as a duplicate of an existing issue, that issue is the tracking issue. The `/review-pr` invocation authorizes this filing, and `preflight-mutations` still runs before it.
+2. Record the issue URL for 8e the moment it exists, before any reply, so a later failure never files twice.
+3. Reply on the finding's thread: `Tracked in <issue URL>. Pre-existing code, so it does not block this PR.` Then resolve the thread. The next round drops the finding as already reported, and `/fix-pr-review` skips resolved threads.
+
+On the blocked-by-open-threads path the finding has no thread: file the issue and skip the reply. When filing fails, leave the thread open, report `not tracked (<reason>)` in the Pre-existing section, and let the next round retry. When the reply or resolve fails after filing, keep the URL and report `tracked, thread left open (<reason>)`. The marker still keeps that thread out of `OPEN_BLOCKERS`. A failure in this step never changes the verdict.
+
+### 8e. Update `.claude/review-state/<pr>.yml`
+
+Step 8d lives in `github-posting-rerun.md` and runs on re-runs only.
 
 `references/finding-state-phase4.md` is the single source of truth for what Phase 4 writes: the full entry shape, which fields are required, and every status transition. Follow its "Phase 4: write back" section; do NOT reconstruct the entry shape from this file. An entry written without `file`, `enclosing_symbol`, and `rule_class` breaks the next round's ID computation, and one written without the cascade fields silently disables the next round's regression sweep.
 
