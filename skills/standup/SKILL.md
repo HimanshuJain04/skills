@@ -42,17 +42,22 @@ Three buckets, in this order. Omit any empty bucket.
 
 ## Output format
 
-```text
-Standup — <window.start_readable> to <window.end_readable>
+Always output the standup in markdown, using this structure.
 
-Done
-- <ticket>: <what landed> (#<pr>)
+```markdown
+## Standup — <window.start_readable> to <window.end_readable>
 
-In progress
-- <ticket>: <what is mid-way through>
+### Done
 
-Reviewed
-- <teammate>'s <ticket> (#<pr>)
+- **<ticket>**: <what landed> (#<pr>)
+
+### In progress
+
+- **<ticket>**: <what is mid-way through>
+
+### Reviewed
+
+- <teammate>'s **<ticket>** (#<pr>)
 ```
 
 Write each line as a short phrase, not a sentence. Lead with the ticket or feature, then a few words on what it was. Merge small related items onto one line rather than spending a bullet each.
