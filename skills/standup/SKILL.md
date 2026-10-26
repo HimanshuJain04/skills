@@ -57,7 +57,7 @@ Always output the standup in markdown, using this structure.
 
 ### Reviewed
 
-- <teammate>'s <ticket> (#<pr>)
+- <teammate>'s **<ticket>** (#<pr>)
 ```
 
 Write each line as a short phrase, not a sentence. Lead with the ticket or feature, then a few words on what it was. Merge small related items onto one line rather than spending a bullet each.
