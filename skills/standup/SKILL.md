@@ -42,16 +42,21 @@ Three buckets, in this order. Omit any empty bucket.
 
 ## Output format
 
-```text
-Standup — <window.start_readable> to <window.end_readable>
+Always output the standup in markdown, using this structure.
 
-Done
-- <ticket>: <what landed> (#<pr>)
+```markdown
+## Standup — <window.start_readable> to <window.end_readable>
 
-In progress
-- <ticket>: <what is mid-way through>
+### Done
 
-Reviewed
+- **<ticket>**: <what landed> (#<pr>)
+
+### In progress
+
+- **<ticket>**: <what is mid-way through>
+
+### Reviewed
+
 - <teammate>'s <ticket> (#<pr>)
 ```
 
