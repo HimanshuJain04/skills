@@ -108,7 +108,7 @@ fi
 CURRENT_ROUND=$(( $(echo "$PRIOR_STATE" | yq '.last_round') + 1 ))
 ```
 
-`PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`) so the reviewer suppresses already-handled findings upfront. Phase 3 step 4.95 enforces this as a safety net.
+`PRIOR_STATE.findings` is passed into Subagent 1's prompt (filtered to `status in {resolved, dismissed, wontfix}`, minus `origin: pre-existing` entries) so the reviewer suppresses already-handled findings upfront. Pre-existing entries stay reportable so Phase 3 step 4.57 can notice a later commit rewriting their line. Phase 3 step 4.95 enforces this as a safety net.
 
 ### Record author rationale (reply-aware dispositions)
 

@@ -257,6 +257,8 @@ These branches apply only after the contract-version check succeeds.
 
 1. **`last_run_sha == CURRENT_HEAD` with stored `base_sha` equal to the pinned base OID**: no new commits on either side. Reuse the cached review result, subject to the blocker check below. If authoritative cache evidence confirms the same review body, head SHA, required GitHub state, and threaded publication ownership are already posted, print the cached result and exit. Otherwise continue directly to Phase 4 and post the cached complete finding set; do not ask whether to replay or post.
 
+   Pending-tracking check (runs before either same-head outcome): when any state entry has `origin: pre-existing` and either no `tracking_issue` or an unresolved thread, skip the replay exit and run `github-posting.md` step 8c alone for those entries. Never repost the confirmed review to get there.
+
    Blocker check (runs before either same-head outcome): compare live `OPEN_BLOCKERS` (Phase 1) against the cached verdict. Thread state moves without SHA movement, so matching SHAs cannot prove the verdict still holds. If blockers are open now and the cached verdict was `approve`, the cached verdict is stale: skip both the replay exit and the direct-to-Phase-4 post, run the Phase 3 verdict fresh, and post on the blocked-by-open-threads path when it fires.
 
 2. **New commits since last run**, when cached SHA is an ancestor of HEAD, means PARTIAL re-review:
@@ -286,7 +288,7 @@ else
 fi
 ```
 
-Pass `PRIOR_STATE.findings` (filtered to status in `{resolved, dismissed, wontfix}`) into Subagent 1's prompt as:
+Pass `PRIOR_STATE.findings` (filtered to status in `{resolved, dismissed, wontfix}`, minus `origin: pre-existing` entries) into Subagent 1's prompt as:
 
 > The following findings were resolved or dismissed in earlier rounds. Do NOT re-report them unless the diff shows the fix was reverted or the underlying code regressed:
 > ```

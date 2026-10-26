@@ -242,13 +242,13 @@ In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listi
 Split each changed file path into segments on `/`, `.`, `_`, `-` and camelCase boundaries, then compare every segment, case-insensitively, against this list. Whole segments only, so `author` and `design-tokens` never match:
 
 ```
-auth | login | logout | session | sessions | token | jwt | oauth | oidc | permission | permissions | rbac | role | roles | guard | guards | acl | tenant | tenants | billing | payment | payments | stripe | checkout | invoice | invoices | crypto | secret | secrets | password | passwords | webhook | webhooks | hl7 | fhir
+auth | login | logout | session | sessions | token | jwt | oauth | oidc | permission | permissions | authorization | authorize | authz | access | policy | policies | rbac | role | roles | guard | guards | acl | tenant | tenants | billing | payment | payments | stripe | checkout | invoice | invoices | crypto | secret | secrets | password | passwords | webhook | webhooks | hl7 | fhir
 ```
 
 Match the diff's **added and removed lines**, case-sensitively, against the pattern below. Removed lines count because deleting a guard or a tenant filter is the most common security regression. Bare `accountId` triggers on purpose: in a multi-tenant repo it marks every tenant-scoped query.
 
 ```
-accountId | account_id | tenantId | tenant_id | organizationId | orgId | @UseGuards | @Roles | @Public | req\.user | createHmac | timingSafeEqual | bcrypt | jsonwebtoken | jwt\. | dangerouslySetInnerHTML | innerHTML | queryRawUnsafe | executeRawUnsafe | sql\.raw | child_process
+accountId | account_id | tenantId | tenant_id | organizationId | orgId | @UseGuards | @Roles | @Public | req\.user | hasAccess | canAccess | isAuthorized | authorize\( | Forbidden | createHmac | timingSafeEqual | bcrypt | jsonwebtoken | jwt\. | dangerouslySetInnerHTML | innerHTML | queryRawUnsafe | executeRawUnsafe | sql\.raw | child_process
 ```
 
 If either matches, set `INCLUDE_SECURITY_REVIEWER = true` and keep the matched paths and patterns as `SENSITIVE_HITS` for the Subagent 4 prompt.

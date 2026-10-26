@@ -9,7 +9,8 @@ its exact ID: regressions caught by luck. This step catches them on purpose.
 
 Dispatch **V2: Regression sweep verifier** over EVERY finding in `PRIOR_STATE` with
 `status in {resolved, dismissed, wontfix}`, regardless of whether any reviewer mentioned it
-this round. V2 gathers the evidence; main applies the rules below to its verdicts:
+this round. V2 gathers the evidence; main applies the rules below to its verdicts. Every
+finding this step reopens gets its `Origin` by the step 4.57 method before the verdict.
 
 1. **Re-verify by `rule_class`, not by ID hash.** The ID is
    `sha1(file::enclosing_symbol::rule_class)`, so the same defect resurfacing in a
@@ -54,7 +55,7 @@ For each remaining finding:
      - Re-introduced (resolving change reverted) → set this finding's status to `regression`, keep it (will be flagged as a fresh active finding with regression history in Phase 4).
      - Not re-introduced → DROP, log `prior-state suppression, resolved in round <round_resolved> by commit <commit_sha_resolved>`.
 
-   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`. Exception: a finding step 3 marked `answered-correction` stays and becomes `active`, and so does a held match step 4.57 kept as `introduced`.
+   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`. Exception: a finding step 3 marked `answered-correction` stays and becomes `active`, and so does any match against an `origin: pre-existing` entry that step 4.57 now marks `introduced`, held through step 3 or not.
 
 3. Report every finding's state as exactly one of: `active`, `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `regression`. The enum is closed, and it is the only status vocabulary that appears in output, logs, or comments.
 

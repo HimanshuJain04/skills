@@ -155,6 +155,9 @@ their reviewer kept flagging was code that predated the PR: https://claude.dev/b
    to blame, so the finding keeps blocking.
 
 2. **Blame the cited line at the head.** Record the commit; step 4.96 reuses it.
+   - In a shallow clone (`git rev-parse --is-shallow-repository` prints `true`), use the
+     cross-repo commands for both blame and the step 3 comparison: missing local history must
+     not read as a non-ancestor.
    - Local mode: `git blame --porcelain -L <line>,<line> "$CURRENT_HEAD" -- <path>`, first
      field of the first line. When `CURRENT_HEAD` is missing locally, run
      `git fetch --no-tags origin "pull/<number>/head"` once, and fall back to the cross-repo
