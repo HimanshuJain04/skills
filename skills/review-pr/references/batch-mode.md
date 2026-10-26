@@ -41,7 +41,7 @@ The run continues unattended through the WHOLE list. The user may be away in bat
 
 - Stop-and-ask intent gap → review with just the diff; tag that PR's report `intent not grounded, findings may be generic`.
 - A PR over 2000 lines gets a chunked review. Note the size in that PR report header.
-- Completed review → queue every surviving finding for automatic posting. Queue a clean review with no open blockers for automatic approval, or for a comment when `IS_SELF_REVIEW=true`. Queue a clean review with open blockers for automatic `REQUEST_CHANGES` on the blocked-by-open-threads path (Phase 3 step 8).
+- Completed review → queue every surviving finding for automatic posting. Queue a clean review with no open blockers for automatic approval, or for a comment when `IS_SELF_REVIEW=true`. A review whose only surviving findings are pre-existing counts as clean. Queue a clean review with open blockers for automatic `REQUEST_CHANGES` on the blocked-by-open-threads path (Phase 3 step 8).
 - A failed subagent doesn't stop the batch: record `<pr>: review failed (<reason>)` in the consolidated report and continue with the rest.
 
 ---

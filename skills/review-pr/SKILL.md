@@ -34,7 +34,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/github-posting.md`: fresh-review REST/GraphQL posting flow: summary body, per-finding comments, hunk validation, Phases A through C, and the write-back. Loaded by **main** in Phase 4 for every completed review. Re-runs with a prior review or cache entry also load `${CLAUDE_SKILL_DIR}/references/github-posting-rerun.md` (Steps 0, 0b, 0c, 4-rolling, 8d); a posting failure also loads `${CLAUDE_SKILL_DIR}/references/github-posting-recovery.md` (Step 7).
 - `references/phase1-timeline-state.md`: prior-review thread query plus shaping, the review-state read plus round seeding, and the run-over-run cache branches. Loaded by **main** in Phase 1 at the timeline, state, and cache steps.
 - `references/dispatch-prompts.md`: the `<SKILL_DIR>` derivation, the `<PROMPT_PREAMBLE>` and `<GROUND_TRUTH>` blocks, and the silent-failure hunter context packet. Loaded by **main** at the Phase 2 dispatch.
-- `references/critic-verify.md`: critic steps 1 through 4.56, dedupe through inverse-risk verification. Loaded by **main** at Phase 3 step 1, kept through step 4.56, reloaded at step 6 for routed findings.
+- `references/critic-verify.md`: critic steps 1 through 4.57, dedupe through origin attribution. Loaded by **main** at Phase 3 step 1, kept through step 4.57, reloaded at step 6 for routed findings.
 - `references/critic-round2.md`: critic steps 4.9, 4.95 and 4.96, regression sweep plus suppression plus lineage. Loaded by **main** at Phase 3 step 4.9, only from round 2 on.
 
 Four closures, so the accounting is deterministic. Main never loads `finding-output-format.md`: only Subagent 1, Subagent 3, and V3 load it, before writing findings. V1 and V2 load no references: they report compact verdicts from finding text. Main never loads `schema-design-checks.md` or `q5-type-coercion.md`: Subagent 1 loads each under its own condition, and V3 loads the schema checks only when the gap check covers Q7-Q9. The anti-slop rules live in `reviewer-prompt.md` alone: no dispatch pastes a second copy into any prompt.
@@ -317,6 +317,7 @@ In unchunked modes Subagent 1 already sees every file.
 The prompt lives in `${CLAUDE_SKILL_DIR}/references/cross-cutting-prompt.md`. Load it at
 this dispatch.
 
+
 ---
 
 ## Phase 3: Critic pass (main context)
@@ -371,6 +372,10 @@ Sweep every code-change finding for sibling sites through V1, per the reference.
 
 Derive or vet the `Inverse risk:` on every `Suggested fix:`, per the reference. `/fix-pr-review` implements these verbatim, so an unvetted remedy becomes production code.
 
+### 4.57. Attribute origin
+
+Mark every surviving finding `Origin: introduced` or `Origin: pre-existing` by blaming its cited line against the pinned base, per the reference. Runs every round, round 1 included. Only `introduced` findings decide the verdict. A `pre-existing` finding still posts as a thread, then Phase 4 tracks it in its own issue so it never blocks this PR.
+
 
 ### 4.6. Apply false-positive rules table
 
@@ -421,16 +426,17 @@ on the large PRs where schema changes live, so dropping the flag drops Q7-Q9 exa
 where they are most likely to fire.
 
 **Re-run the cascade gates on everything this step adds.** Reload `${CLAUDE_SKILL_DIR}/references/critic-verify.md` for this routing. Findings created here, main's
-own and V3's alike, arrive after steps 4.55, 4.56 and 4.96 have already run, so they
-carry an empty `Class-sites`, an empty `Inverse risk`, and no `caused_by` unless routed
-back. Route every finding this step adds back through:
+own and V3's alike, arrive after steps 4.55, 4.56, 4.57 and 4.96 have already run, so they
+carry an empty `Class-sites`, an empty `Inverse risk`, no `Origin`, and no `caused_by` unless
+routed back. Route every finding this step adds back through:
 
 1. **3**: drop already-known, including answered threads.
 2. **4.55**: class-completeness sweep, so `Class-sites: <A>/<N>` is non-empty. Where V1
    has already returned, run the sweep inline in main rather than dispatching a second V1;
    the 4-subagent cap still holds.
 3. **4.56**: inverse-risk derivation, so every `Suggested fix:` carries an `Inverse risk:`.
-4. **4.96**: lineage attribution, so `caused_by` is set or explicitly null.
+4. **4.57**: origin attribution, so `Origin` is `introduced` or `pre-existing`.
+5. **4.96**: lineage attribution, so `caused_by` is set or explicitly null.
 
 `Inverse risk` and `Class-sites` are mandatory on any finding proposing a code change no
 matter which step raised it; a gap-check finding that skips these writes nulls straight
@@ -452,21 +458,25 @@ skip the trend sentence, and move on.
 From round 2:
 
 ```
-cascade_share: <count of active findings with a resolvable caused_by> / <count of active findings>
+cascade_share: <count of active introduced findings with a resolvable caused_by> / <count of active introduced findings>
 ```
+
+Pre-existing findings stay out of both counts. No fix in this PR wrote their lines.
 
 A `caused_by` counts only when its target finding is still present. Dangling ids are excluded, per `references/finding-state-schema.md` (`caused_by` cardinality), which owns that rule.
 
-Zero active findings → `cascade_share = 0`, not a division by zero.
+Zero active introduced findings → `cascade_share = 0`, not a division by zero.
 
 Step 8 below reads this value for the verdict prefix, and Phase 4's **Cascade check**
 prints it. Neither recomputes it: one number, one definition, one round.
 
 ### 8. Decide verdict
 
-- One or more surviving findings → `request-changes`
-- No surviving findings AND no open blockers → `approve`
-- No surviving findings BUT one or more open blockers (`OPEN_BLOCKERS` from Phase 1) → `request-changes` on the blocked-by-open-threads path. Dedupe was right to drop the re-reported findings, so no new threads go up. The review posts body-only with the event, and its body lists every blocker as `path:line` (`path` alone for file-level threads with no line), author, and one-line issue. A self-review posts the same body with `COMMENT`, keeping the semantic `request-changes` verdict in the body and terminal output. Thread coverage prints `0/0` with the reason pointing at the blocking-threads list.
+Count only `Origin: introduced` findings here. Pre-existing findings still post, but never set the verdict.
+
+- One or more surviving introduced findings → `request-changes`
+- No surviving introduced findings AND no open blockers → `approve`
+- No surviving introduced findings BUT one or more open blockers (`OPEN_BLOCKERS` from Phase 1) → `request-changes` on the blocked-by-open-threads path. Dedupe was right to drop the re-reported findings, so no new threads go up. The review posts body-only with the event, and its body lists every blocker as `path:line` (`path` alone for file-level threads with no line), author, and one-line issue. A self-review posts the same body with `COMMENT`, keeping the semantic `request-changes` verdict in the body and terminal output. Pre-existing findings on this path go in that body under `### Pre-existing` without threads, and Phase 4 still tracks each in its own issue. Thread coverage prints `0/<P>`, where `<P>` is that pre-existing count, with the reason pointing at the blocking-threads list.
 
 At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
@@ -477,7 +487,7 @@ At any round, if `cascade_share > 0.5`, prepend to the verdict reason:
 
 A binary assessment:
 
-- **No**: one or more findings survived the critic pass, OR one or more open blockers exist, OR Q1 identified an intent gap
+- **No**: one or more introduced findings survived the critic pass, OR one or more open blockers exist, OR Q1 identified an intent gap
 - **Yes**: otherwise
 
 Write a one-sentence approval reason grounded in the most important finding or the absence of findings. Composed text carries no em or en dash. Text quoted from the issue or the diff stays as you found it.
@@ -508,7 +518,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 ## Summary
 <2-3 sentence summary>
 
-## Findings (<count>)
+## Findings (<introduced count>)
 
 ### Critical
 <entries>
@@ -521,6 +531,9 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 
 ### Minor
 <entries>
+
+## Pre-existing (<count>)
+<entries in severity order, each with its blame commit and its tracking issue URL, or `not tracked (<reason>)` when Phase 4 could not file it>
 
 ## Filtered out (<count>)
 <dropped findings with reasons, for auditability>
@@ -535,7 +548,7 @@ Every Phase 4 path reaches **Convergence handoff** after main submits the GitHub
 **Verdict**: approve → ✅ · request-changes → ❌
 **Severity headers**: Critical → 🔴 · Serious → 🟠 · Moderate → 🟡 · Minor → 🔵
 
-Terminal output must include Filtered out. It shows when the critic over-filters. Include multi-round status when `PRIOR_STATE.findings` is non-empty.
+Terminal output must include Filtered out. It shows when the critic over-filters. Include Pre-existing when any finding carries that origin. Include multi-round status when `PRIOR_STATE.findings` is non-empty.
 
 ### Review URL
 
@@ -588,7 +601,7 @@ Total:   <s>
 
 An explicit `/review-pr <PR URL>` invocation is fresh authorization to submit the complete review to that exact PR. The authorization remains valid only while the target PR, head SHA, semantic verdict, GitHub event, and frozen payload match the later mutation card. Apply `preflight-mutations` normally and block on any non-ready verdict; do not bypass it or ask the user to select findings, confirm posting, keep the review local, edit the body, or choose a next action.
 
-- When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with no open blockers with `APPROVE` and no review comments; submit a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8).
+- When `IS_SELF_REVIEW=false`, submit every surviving finding as an individual review comment with `REQUEST_CHANGES`; submit a clean review with no open blockers with `APPROVE` and no review comments; submit a clean review with open blockers on the blocked-by-open-threads path (Phase 3 step 8). A review whose only surviving findings are pre-existing counts as clean, and its `APPROVE` carries those findings as threads.
 - When `IS_SELF_REVIEW=true`, submit the same complete finding set or clean summary with `COMMENT`. Keep the semantic verdict in the body and terminal output.
 - Preserve every item in `Filtered out` as terminal-only audit output. Filtered items never enter the GitHub payload.
 - Every surviving finding ships as a review thread, or the Thread coverage line states plainly that it did not ship and why. The terminal report is never pasted as an issue comment.

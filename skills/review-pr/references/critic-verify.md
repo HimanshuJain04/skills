@@ -38,10 +38,11 @@ Verify every finding against the stashed diff regardless of size or severity, in
 
 ### 3. Drop already-known
 
-A match is the same file and the same issue as the prior thread's first comment, and the line may have shifted. Check the answered branch first:
+A match is the same file and the same issue as the prior thread's first comment, and the line may have shifted. Check the marker branch first, then the answered branch:
 
-1. The matched thread is answered, as defined in `phase1-timeline-state.md`: keep a `Prior-finding-correction` only if it quotes the reply claim it refutes, names new evidence, and links the thread, and mark it `answered-correction`. Otherwise DROP, log `answered in thread <thread_id>: <author_rationale>`; Phase 4 step 2 reads this log.
-2. Any other match NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
+1. A match whose prior thread's first comment carries `<!-- review-pr:origin=pre-existing -->`: HOLD it rather than drop it, even though the `/review-pr` reply on that thread reads as answered. Step 4.57 decides it once the finding has an origin, because a PR commit may have rewritten that old line.
+2. The matched thread is answered, as defined in `phase1-timeline-state.md`: keep a `Prior-finding-correction` only if it quotes the reply claim it refutes, names new evidence, and links the thread, and mark it `answered-correction`. Otherwise DROP, log `answered in thread <thread_id>: <author_rationale>`; Phase 4 step 2 reads this log.
+3. Any other match NOT marked `Prior-finding-correction`: DROP, log `already reported in prior review`.
 
 ### 4. Challenge with the 3-prong test
 
@@ -143,3 +144,61 @@ remedy becomes production code.
 
 Done when every surviving finding carrying a `Suggested fix:` exits this step with a
 non-empty `Inverse risk:`.
+
+### 4.57. Attribute origin
+
+Runs every round, round 1 included, over every surviving finding. It decides whether the
+PR wrote the defect or inherited it. On the Claude Code team's internal PRs, 59% of what
+their reviewer kept flagging was code that predated the PR: https://claude.dev/blog/solving-code-review-at-anthropic/
+
+1. **No cited line** (module-scope or body-fallback): `Origin: introduced`. There is no line
+   to blame, so the finding keeps blocking.
+
+2. **Blame the cited line at the head.** Record the commit; step 4.96 reuses it.
+   - Local mode: `git blame --porcelain -L <line>,<line> "$CURRENT_HEAD" -- <path>`, first
+     field of the first line. When `CURRENT_HEAD` is missing locally, run
+     `git fetch --no-tags origin "pull/<number>/head"` once, and fall back to the cross-repo
+     query if it is still missing.
+   - Cross-repo mode: the query below with `$sha` set to `CURRENT_HEAD`. Take the range
+     covering the cited line and read its commit oid. The REST commit list cannot blame a
+     line, only a file, so it never supplies the commit here.
+
+   ```graphql
+   query($owner:String!, $repo:String!, $sha:String!, $path:String!) {
+     repository(owner:$owner, name:$repo) {
+       object(expression:$sha) {
+         ... on Commit {
+           blame(path:$path) {
+             ranges { startingLine endingLine commit { oid } }
+           }
+         }
+       }
+     }
+   }
+   ```
+
+3. **Compare with the pinned base.** The commit predates the PR when it is
+   `PINNED_BASE_OID` or one of its ancestors:
+   - Local mode: `git merge-base --is-ancestor <commit> "$PINNED_BASE_OID"` exits 0. When
+     `PINNED_BASE_OID` is missing locally, run `git fetch --no-tags origin "$BASE_REF_NAME"`
+     once first.
+   - Cross-repo mode:
+     `gh api "repos/<owner>/<repo>/compare/<commit>...$PINNED_BASE_OID" --jq .status`
+     prints `ahead` or `identical`.
+
+   Any other result, including a failed command, is `Origin: introduced`.
+
+4. **Check that the PR did not make the old line wrong.** An old line can turn defective
+   because the diff changed something it depends on: a caller, an argument, a type, a
+   config value, or a contract. It also turns defective when the diff deletes a guard, a
+   tenant filter, or a validation that protected it. Read the finding's `Why it matters`
+   against the diff. When the defect needs any added, changed, or removed line to happen,
+   the finding is `Origin: introduced`. When it would happen at `PINNED_BASE_OID` too, it is
+   `Origin: pre-existing`. When unsure, `introduced`.
+
+5. **Held matches from step 3.** A held finding that is still `pre-existing` drops, logged
+   `already tracked in thread <thread_id>`. One that is now `introduced` stays: the PR
+   rewrote the old line, so it blocks like any other finding.
+
+Done when every surviving finding carries an `Origin`. Each `pre-existing` entry in the
+Phase 4 Pre-existing section names its blame commit, so the mark can be audited.

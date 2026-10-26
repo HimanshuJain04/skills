@@ -118,7 +118,7 @@ def main_loads(mode, round2=False, step6_reload=False, monorepo=True):
     write-back file, loaded after posting; the rerun and recovery posting
     files load only on re-runs and failures and stay out of the fresh-run
     paths. The critic-verify entry is the step-6 reload for findings routed
-    back through 4.55/4.56."""
+    back through 4.55 to 4.57."""
     loads = [f for f in MAIN_ALWAYS if monorepo or f != "repo-map.md"]
     if mode == "parallel-chunked":
         loads += ["cross-cutting-prompt.md"]
@@ -161,8 +161,9 @@ def network_calls(mode, chunks=1, hunter=True, linked_issues=0,
     file-level thread; hunk validation reuses the staged diff. The Step 0
     collapse (one prior-review query instead of three) applies to re-runs
     only and stays out of the fresh-run counts. Evidence fetches inside
-    V1/V2/V3 and re-run thread resolution are unbounded by the text and
-    reported separately."""
+    V1/V2/V3, the per-finding blame and base comparison of step 4.57, the
+    pre-existing tracking of posting step 8c, and re-run thread resolution
+    are unbounded by the text and reported separately."""
     phase1 = 9 if cross_repo else 7
     phase1 += linked_issues
     phase2 = 0

@@ -48,6 +48,8 @@ findings:
     severity: Moderate
     label_history: [M3, M3, M3]    # what label each round assigned (round_first_seen → last_round)
     status: resolved                # active | resolved | dismissed | wontfix | regression
+    origin: introduced              # introduced | pre-existing (Phase 3 step 4.57)
+    tracking_issue: null            # issue URL for a pre-existing finding (posting step 8c)
     round_first_seen: 1
     round_resolved: 5
     commit_sha_resolved: ced1f1930
@@ -113,6 +115,8 @@ findings:
 | `findings[].depends_on` | string | nullable | For `dismissed`/`wontfix` only: the code condition the rationale rests on (e.g. `"the early-break at search.ts:88 keeps serial decrypt cheap"`). When a later commit voids it, the dismissal is void and the finding reopens as `active` |
 | `findings[].class_sites` | list | conditional | Every site of this `rule_class` with a `handled` flag: item schema below. Resolution is gated on ALL sites handled, not just the cited one; this is what prevents a 3-of-4-sites fix from being marked resolved. **Required whenever the finding carries a `Suggested fix:`**; null ONLY when the finding proposes no code change |
 | `findings[].dismissal_reason` | string | nullable | Free-form note when status = `dismissed` or `wontfix` |
+| `findings[].origin` | enum | yes | `introduced \| pre-existing`, from Phase 3 step 4.57. Only `introduced` findings decide the verdict. Entries written before this field existed read as `introduced` |
+| `findings[].tracking_issue` | string | nullable | Issue URL `github-posting.md` step 8c filed for a `pre-existing` finding. Null means not filed yet, and the next round retries |
 | `findings[].last_message` | string | yes | Most-recent `Issue:` text, used in audit logs / human-readable diffs |
 | `findings[].github_thread_id` | string | nullable | `PRRT_...` GraphQL node ID, for resolveReviewThread / re-comments |
 | `findings[].github_comment_id` | int | nullable | REST databaseId, for cache-key parity with the existing `posted_comments` array |
@@ -168,7 +172,7 @@ One id, not a list: the single *nearest* cause. When several closed findings cou
 ```
 
 - **`dismissed`**: an explicit disposition imported from prior state, a downstream triage workflow, or a Phase 1 author-reply read (an open or resolved thread whose human reply carries a rationale plus pointer, see "Build the prior-review timeline" in `references/phase1-timeline-state.md`). `dismissal_reason` is required. `/review-pr` never creates this status by deselecting a finding.
-- **`wontfix`**: user rejected the finding as wrong / out-of-scope, either imported or recorded from a Phase 1 author-reply read. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue").
+- **`wontfix`**: user rejected the finding as wrong / out-of-scope, either imported or recorded from a Phase 1 author-reply read. `dismissal_reason` is required (e.g., "intentional design, see the linked design issue"). Phase 4 also writes it for a `pre-existing` finding once its own issue exists, with `dismissal_reason: "pre-existing, tracked in <issue URL>"`.
 - **`regression`**: subagent emits a finding whose `id` matches an existing `resolved` entry, AND the diff shows the resolving code was reverted/edited. Treat as a fresh active finding but keep the history.
 - **`dismissed`/`wontfix` → `active`**: the code condition recorded in `depends_on` no longer holds at the current head, so the rationale that closed the finding no longer applies. Reopen as `active`; keep `dismissal_reason` and the original `round_resolved` as history, and note which commit voided the condition. There is no separate "voided" status. A void dismissal is just an open finding again.
 

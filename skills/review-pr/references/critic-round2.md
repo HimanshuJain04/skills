@@ -27,24 +27,8 @@ this round. V2 gathers the evidence; main applies the rules below to its verdict
    dismissal is void. Reopen with `status: active` and note which commit voided it.
 
 4. **Attribute the lineage: bounded to one hop.** Blame the finding's cited line:
-   `git blame -L <line>,<line>` locally, or this GraphQL blame in cross-repo mode
-   with `$sha` set to `CURRENT_HEAD`.
-   The REST commit list cannot blame a line, only a file, so it never supplies
-   the commit here.
-
-   ```graphql
-   query($owner:String!, $repo:String!, $sha:String!, $path:String!) {
-     repository(owner:$owner, name:$repo) {
-       object(expression:$sha) {
-         ... on Commit {
-           blame(path:$path) {
-             ranges { startingLine endingLine commit { oid } }
-           }
-         }
-       }
-     }
-   }
-   ```
+   `git blame -L <line>,<line>` locally, or the GraphQL blame in `critic-verify.md` step
+   4.57 in cross-repo mode. Reload that file for the query when it has left context.
 
    Take the range covering the cited line and read its commit oid. Set
    `caused_by: <prior finding id>` ONLY when that commit is recorded as some
@@ -70,7 +54,7 @@ For each remaining finding:
      - Re-introduced (resolving change reverted) → set this finding's status to `regression`, keep it (will be flagged as a fresh active finding with regression history in Phase 4).
      - Not re-introduced → DROP, log `prior-state suppression, resolved in round <round_resolved> by commit <commit_sha_resolved>`.
 
-   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`. Exception: a finding step 3 marked `answered-correction` stays and becomes `active`.
+   - **`status in {dismissed, wontfix}`** → DROP, log `prior-state suppression, <status> in round <round_resolved>: "<dismissal_reason>"`. Exception: a finding step 3 marked `answered-correction` stays and becomes `active`, and so does a held match step 4.57 kept as `introduced`.
 
 3. Report every finding's state as exactly one of: `active`, `resolved` (with commit), `dismissed` (with reason), `wontfix` (with reason), `regression`. The enum is closed, and it is the only status vocabulary that appears in output, logs, or comments.
 
@@ -86,8 +70,8 @@ catch: a new finding sitting on a line the previous round's fix wrote. Skip this
 
 Run it over the findings that SURVIVED step 4.95, one hop, same bound as step 4.9:
 
-1. Blame the finding's cited line: `git blame -L <line>,<line>` locally, the step 4.9
-   GraphQL blame in cross-repo mode.
+1. Take the blame commit step 4.57 recorded for the finding's cited line. No recorded
+   commit, because the finding cites no line or its blame failed, means `caused_by: null`.
 
 2. Set the field:
 
