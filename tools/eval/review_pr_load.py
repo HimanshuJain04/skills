@@ -63,6 +63,7 @@ FILES = [
     "repo-map.md",
     "reviewer-prompt.md",
     "schema-design-checks.md",
+    "security-prompt.md",
     "verification-subagents.md",
 ]
 
@@ -110,7 +111,8 @@ def hunter_prompt_bytes():
     return len(text[fence + 3:close].encode("utf-8"))
 
 
-def main_loads(mode, round2=False, step6_reload=False, monorepo=True):
+def main_loads(mode, round2=False, step6_reload=False, monorepo=True,
+               security=False):
     """Ordered file list main loads, repeats kept. Subagent 1 always
     dispatches, so the reviewer references never land in main. The
     cross-cutting prompt loads only in parallel-chunked, the only mode that
@@ -118,10 +120,13 @@ def main_loads(mode, round2=False, step6_reload=False, monorepo=True):
     write-back file, loaded after posting; the rerun and recovery posting
     files load only on re-runs and failures and stay out of the fresh-run
     paths. The critic-verify entry is the step-6 reload for findings routed
-    back through 4.55 to 4.57."""
+    back through 4.55 to 4.57. The security prompt loads only when sensitive
+    paths or patterns set INCLUDE_SECURITY_REVIEWER, in either mode."""
     loads = [f for f in MAIN_ALWAYS if monorepo or f != "repo-map.md"]
     if mode == "parallel-chunked":
         loads += ["cross-cutting-prompt.md"]
+    if security:
+        loads += ["security-prompt.md"]
     loads += MAIN_IF_FINDINGS + MAIN_IF_CODE_CHANGE_FINDINGS
     loads += ["finding-state-phase4.md"]
     if step6_reload:
@@ -145,6 +150,9 @@ def subagent_loads(chunks, hunter=True, worst=True):
     if hunter:
         out["silent-failure-hunter"] = []
     out["cross-cutting"] = ["cross-cutting-prompt.md", "finding-output-format.md"]
+    out["security-reviewer"] = ["security-prompt.md", "finding-output-format.md"]
+    if worst:
+        out["security-reviewer"] += ["q5-type-coercion.md"]
     return out
 
 
@@ -200,6 +208,12 @@ def report(chunks=3, monorepo=True):
     d1, r1s = sums(r1)
     paths["any/round-2-delta"] = {"delta_distinct": d2 - d1,
                                   "delta_with_repeats": r2s - r1s, "network": 0}
+    sec = main_loads("parallel-standard", monorepo=monorepo, security=True)
+    ds, rs = sums(sec)
+    d0, r0 = sums(std)
+    paths["any/security-reviewer-delta"] = {"delta_distinct": ds - d0,
+                                            "delta_with_repeats": rs - r0,
+                                            "network": 0}
 
     subs = subagent_loads(chunks)
     sub_bytes = {role: sums(loads) for role, loads in subs.items()}
@@ -207,6 +221,7 @@ def report(chunks=3, monorepo=True):
         "chunk-reviewer-prompt": sizes["reviewer-prompt.md"],
         "silent-failure-hunter-prompt": hunter_prompt_bytes(),
         "cross-cutting-prompt": sizes["cross-cutting-prompt.md"],
+        "security-reviewer-prompt": sizes["security-prompt.md"],
         "verifier-prompt": sizes["verification-subagents.md"],
     }
     return {"sizes": sizes, "paths": paths, "subagent_refs": sub_bytes,

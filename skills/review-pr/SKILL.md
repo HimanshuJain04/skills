@@ -22,11 +22,12 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/batch-mode.md`: orchestration rules, "don't stop" semantics, consolidated-report template, and automatic posting sequence. Loaded by **main** at Phase 1 when the user gives 2+ PR URLs or asks for all open PRs.
 - `references/reviewer-prompt.md`: the whole Subagent 1 prompt, the anti-slop rules it works under, and the note on why the finding shape is not restated inside it. Loaded by **main** at the Phase 2 dispatch on every `SIZE_MODE` branch.
 - `references/cross-cutting-prompt.md`: the whole Subagent 3 prompt. Loaded by **main** at the Phase 2 dispatch when `SIZE_MODE` is `parallel-chunked`; the unchunked modes never dispatch Subagent 3.
-- `references/q5-type-coercion.md`: the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5 when the diff contains a DB insert/update or an API payload construction.
+- `references/security-prompt.md`: the whole Subagent 4 prompt. Loaded by **main** at the Phase 2 dispatch when `INCLUDE_SECURITY_REVIEWER = true`, in every `SIZE_MODE`.
+- `references/q5-type-coercion.md`: the Q5 type-coercion scan: coercion methods, how to decide a field is numeric, severity. Loaded by **Subagent 1** while answering Q5, and by **Subagent 4**, when the diff contains a DB insert/update or an API payload construction.
 - `references/class-sweep-and-inverse-risk.md`: reviewer-prompt steps 5 and 6: blast-radius search order, the `class_completeness:` and `Inverse risk:` field rules, the worked inverse-risk examples. Loaded by **Subagent 1** as soon as any finding proposes a code change.
 - `references/repo-map.md`: the `repo_map_files` / `repo_map_exports` shell, local and cross-repo modes. The one copy in the repo; `/fix-pr-review` loads it from here too. Loaded by **main** in Phase 1 when `packages/` or `apps/` exists.
 - `references/q6-reusability-search.md`: STEP A enumeration + STEP B search algorithm + Q6 control-flow gap. Loaded by **Subagent 1** when the diff has 1+ new definitions of any STEP A kind (not top-level only). The cross-repo search block lives in `references/q6-cross-repo.md`, loaded only when `repo_map_exports` is the cross-repo `N/A` marker.
-- `references/finding-output-format.md`: the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3** and **V3** before they write any finding.
+- `references/finding-output-format.md`: the per-finding field block, the `class_completeness:` audit shape, and the run-level closing block. The one copy of the finding shape. Loaded by **Subagent 1**, **Subagent 3**, **Subagent 4** and **V3** before they write any finding.
 - `references/schema-design-checks.md`: Q7 (overlap), Q8 (1:1 consolidation), Q9 (cross-table FK) checks. Loaded by **Subagent 1** when `INCLUDE_SCHEMA_CHECKS = true`, and by **V3** when the gap check covers Q7-Q9.
 - `references/verification-subagents.md`: V1/V2/V3 dispatch conditions + the exact prompt each is given. Loaded by **main** in Phase 3 at the first of steps 4.55 / 4.9 / 6 that fires.
 - `references/false-positive-rules.md`: the four-rule YAML table (`wrapped-coercion`, `intent-alignment`, `library-behavior-citation`, `default-fallback`) each surviving finding is run through. Loaded by **main** at Phase 3 step 4.6 when any finding survives step 4.5.
@@ -37,7 +38,7 @@ Main or a subagent loads each file only on the branch that reaches it. Loader an
 - `references/critic-verify.md`: critic steps 1 through 4.57, dedupe through origin attribution. Loaded by **main** at Phase 3 step 1, kept through step 4.57, reloaded at step 6 for routed findings.
 - `references/critic-round2.md`: critic steps 4.9, 4.95 and 4.96, regression sweep plus suppression plus lineage. Loaded by **main** at Phase 3 step 4.9, only from round 2 on.
 
-Four closures, so the accounting is deterministic. Main never loads `finding-output-format.md`: only Subagent 1, Subagent 3, and V3 load it, before writing findings. V1 and V2 load no references: they report compact verdicts from finding text. Main never loads `schema-design-checks.md` or `q5-type-coercion.md`: Subagent 1 loads each under its own condition, and V3 loads the schema checks only when the gap check covers Q7-Q9. The anti-slop rules live in `reviewer-prompt.md` alone: no dispatch pastes a second copy into any prompt.
+Four closures, so the accounting is deterministic. Main never loads `finding-output-format.md`: only Subagent 1, Subagent 3, Subagent 4, and V3 load it, before writing findings. V1 and V2 load no references: they report compact verdicts from finding text. Main never loads `schema-design-checks.md` or `q5-type-coercion.md`: Subagent 1 loads each under its own condition, Subagent 4 loads the coercion scan under the same condition, and V3 loads the schema checks only when the gap check covers Q7-Q9. The anti-slop rules live in `reviewer-prompt.md` alone: no dispatch pastes a second copy into any prompt.
 
 ## Planning-doc grounding (optional pre-review context)
 
@@ -236,6 +237,22 @@ If any pattern appears, set `INCLUDE_SCHEMA_CHECKS = true`. Also extract `SCHEMA
 
 In cross-repo mode, use `gh api git/trees/<head-sha>?recursive=1` for file listing. Q7-Q9 reads use `gh api repos/<owner>/<repo>/contents/<path>?ref=<head-sha>`.
 
+### Check for sensitive code (flag for Phase 2)
+
+Split each changed file path into segments on `/`, `.`, `_`, `-` and camelCase boundaries, then compare every segment, case-insensitively, against this list. Whole segments only, so `author` and `design-tokens` never match:
+
+```
+auth | login | logout | session | sessions | token | jwt | oauth | oidc | permission | permissions | rbac | role | roles | guard | guards | acl | tenant | tenants | billing | payment | payments | stripe | checkout | invoice | invoices | crypto | secret | secrets | password | passwords | webhook | webhooks | hl7 | fhir
+```
+
+Match the diff's **added and removed lines**, case-sensitively, against the pattern below. Removed lines count because deleting a guard or a tenant filter is the most common security regression. Bare `accountId` triggers on purpose: in a multi-tenant repo it marks every tenant-scoped query.
+
+```
+accountId | account_id | tenantId | tenant_id | organizationId | orgId | @UseGuards | @Roles | @Public | req\.user | createHmac | timingSafeEqual | bcrypt | jsonwebtoken | jwt\. | dangerouslySetInnerHTML | innerHTML | queryRawUnsafe | executeRawUnsafe | sql\.raw | child_process
+```
+
+If either matches, set `INCLUDE_SECURITY_REVIEWER = true` and keep the matched paths and patterns as `SENSITIVE_HITS` for the Subagent 4 prompt.
+
 ### Load project-level review suppressions
 
 Read it at the base revision, never the worktree: a checked-out PR must not suppress its own review.
@@ -268,7 +285,7 @@ In cross-repo mode, fetch via `gh api repos/<owner>/<repo>/contents/.claude/revi
 
 ### Stage the handoff files
 
-Subagents never fetch the diff or receive pasted context. At the end of Phase 1, write these into a per-PR subdirectory next to `$STATE_FILE`, named for the state file without `.yml` (batch mode shares the directory across concurrent flows): `diff.full.patch` (full diff, for the hunter, cross-cutting reviewer, and V3), `diff.chunk-N.patch` (per-chunk diffs split by file, chunked mode only), `repo-map.md` (repo map from the step above), `timeline.md` (intent model plus prior timeline and closed findings). No prompt tells a subagent to run `gh pr diff`. Prompts carry file paths plus the small inline intent.
+Subagents never fetch the diff or receive pasted context. At the end of Phase 1, write these into a per-PR subdirectory next to `$STATE_FILE`, named for the state file without `.yml` (batch mode shares the directory across concurrent flows): `diff.full.patch` (full diff, for the hunter, cross-cutting reviewer, security reviewer, and V3), `diff.chunk-N.patch` (per-chunk diffs split by file, chunked mode only), `repo-map.md` (repo map from the step above), `timeline.md` (intent model plus prior timeline and closed findings). No prompt tells a subagent to run `gh pr diff`. Prompts carry file paths plus the small inline intent.
 
 ---
 
@@ -285,6 +302,8 @@ Launch in a **single message with multiple Agent tool calls** based on `SIZE_MOD
 - Dispatch ONE Subagent 1 PER CHUNK with the small inline intent plus its chunk file, `repo-map.md`, and `timeline.md`. Prompt: "Your scope is the files listed above. Read only <chunk-file>. Do not report findings in other files."
 - Dispatch one silent-failure hunter and one **cross-cutting reviewer** at full PR scope, both reading `diff.full.patch`. Chunk reviewers report within their own chunk only, so Subagent 3 is the one reviewer that can see a defect class spanning two chunks. Without it, that class feeds the cascade directly.
 - Always proceed with chunked parallel review. Never ask for confirmation, regardless of size.
+
+**Either mode**, when `INCLUDE_SECURITY_REVIEWER = true`: also dispatch Subagent 4 (security reviewer) at full PR scope, reading `diff.full.patch` and `timeline.md`.
 
 ### Degraded-mode rule
 
@@ -317,6 +336,14 @@ In unchunked modes Subagent 1 already sees every file.
 The prompt lives in `${CLAUDE_SKILL_DIR}/references/cross-cutting-prompt.md`. Load it at
 this dispatch.
 
+### Subagent 4 (conditional): Security reviewer
+
+Dispatch when `INCLUDE_SECURITY_REVIEWER = true`, in either `SIZE_MODE`. Subagent 1 still answers Q5; this is the independent second pass on the code where one missed security bug costs the most.
+
+- `subagent_type`: `general-purpose`
+- Scope: the WHOLE PR, security only. Each finding cites the line that introduces it.
+
+The prompt lives in `${CLAUDE_SKILL_DIR}/references/security-prompt.md`. Load it at this dispatch.
 
 ---
 
