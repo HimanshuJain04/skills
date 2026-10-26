@@ -351,7 +351,7 @@ Match each line-level comment's `databaseId` (from REST `.comments[].id`) to a t
 
 ### 8c. Track pre-existing findings in their own issues
 
-Covers every finding posted this round with `Origin: pre-existing`, plus every prior state entry with `origin: pre-existing` and no `tracking_issue`, which is how a failed filing gets retried, plus every entry with a `tracking_issue` whose thread is still unresolved, which reuses that URL and redoes only step 3. Dedupe the set by finding `id`. Skip when it is empty. For each:
+Covers every finding posted this round with `Origin: pre-existing`, plus every prior state entry with `origin: pre-existing` and no `tracking_issue`, which is how a failed filing gets retried, plus every entry still at `origin: pre-existing` with a `tracking_issue` whose thread is still unresolved, which reuses that URL and redoes only step 3. An entry reactivated as `introduced` keeps its old URL as history but never enters this set, so its blocking thread stays open. Dedupe the set by finding `id`. Skip when it is empty. For each:
 
 1. Invoke `file-issue` for the PR's repository. The issue names the file, line, blame commit, and the finding's issue, why, and suggested fix, and links the review thread as the place it was found. When `file-issue` resolves it as a duplicate of an existing issue, that issue is the tracking issue. The `/review-pr` invocation authorizes this filing, and `preflight-mutations` still runs before it.
 2. Record the issue URL for 8e the moment it exists, before any reply, so a later failure never files twice.
