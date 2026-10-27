@@ -77,12 +77,19 @@ Open with two to four sentences of plain prose answering what was wrong, then wh
 Then include only the sections that carry real content:
 
 - **What changed.** Derive one outcome-focused bullet from each verified request row. Do not infer additions from the diff.
-- **Before and after, and QA test results.** When the change alters UI or API behavior, the card's Browser facet names `.qa/pr-evidence.md` from `browser-qa`. Paste it here verbatim. Its SHA-256 must equal the recorded digest; a missing fragment or another digest returns to `done`, and so does a cold-read bar that fails inside the fragment, named in the return, since `done` regenerates it through `browser-qa`.
+- **Before and after, and QA test results.** When the change alters UI or API behavior, the card's Browser facet names `.qa/pr-evidence.md` from `browser-qa`. Paste it here verbatim, except for embed lines left out on the user's first choice when push access is missing. Its SHA-256 must equal the recorded digest; a missing fragment or another digest returns to `done`, and so does a cold-read bar that fails inside the fragment, named in the return, since `done` regenerates it through `browser-qa`.
 - **How to verify.** Derive only from the evidence index's exact observations. Include applicable `not-applicable` reasons and do not invent evidence. A PR without the fragment says here in one line why browser QA does not apply, for example `No UI or API behavior changed, so there is no browser QA.`
 - **Risk or scope notes.** Only when something is genuinely uncertain, migrated, or deliberately deferred.
 - The issue link from section 2.
 
 The attach list is the target of every `![...](...)` embed in the fragment outside code, each once, in fragment order, and each file's SHA-256 must equal the digest the Browser facet recorded. A PR with no fragment attaches nothing. The data approval covers the whole fragment, its text as well as its files: paste and attach only when it holds synthetic or redacted data or the user explicitly approved publishing it. Without that approval, stop before any push, create, or body-edit side effect and ask the user to approve the listed files and text, or return to `done` to regenerate on synthetic data. Attaching requires gh v2.99.0 or later; confirm the floor with `gh --version` before any push or create side effect. When the install is older, stop back to `done` for a gh upgrade instead of publishing a UI or API PR without its evidence. Publish bare only on explicit user decision, then upload the fragment's files through section 6's `gh pr edit --attach` step after upgrading; `done` holds Browser `deferred` until they land.
+
+Uploading also needs push access to the base repository. With a non-empty attach list, resolve the base repository from the card's base remote through `gh repo view --json nameWithOwner`, as section 6 does, and read `gh api repos/<nameWithOwner> --jq .permissions.push` before any push, create, or body-edit side effect. When it is not `true`, no upload from this account can replace a local path in the body, so stop before any side effect and ask the user to choose:
+
+- **Publish without the files.** The fragment's embed lines come out of the body, the frozen attach list is empty for every lane, and the left-out paths with their digests go into the publication evidence. `done` holds Browser `deferred`.
+- **Leave it to someone with push access.** Return to `done`, which sets Browser `blocked` and names the `.qa/` files and digests that publication needs.
+
+When an older gh and missing push access both apply, this choice governs.
 
 A heading with nothing under it comes out. A small PR is the lead paragraph, how to verify, and the link. Do not paste the internal readiness tables into the PR body.
 

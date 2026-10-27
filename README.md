@@ -93,7 +93,7 @@ Every row below is one installable skill (`skills/<name>/SKILL.md`, which is wha
 | `sync-agent-setups` | Manually preview and sync Claude Code's user-authored behavioral setup outward to explicitly selected agents |
 | `resolving-merge-conflicts` | Resolve an in-progress git conflict without a **silent drop**. Every hunk from both sides is placed as kept, superseded, or dropped before you commit |
 | `git-commit` | Conventional commits from diff analysis. Every file is classified into exactly one commit. Append-only, with a message-only mode |
-| `file-pr` | Publish a PR from a current `ready-to-publish` card, with `browser-qa`'s before-and-after shots and QA results in the body for UI and API changes, verify the remote branch and PR, then return their evidence to `done` |
+| `file-pr` | Publish a PR from a current `ready-to-publish` card, with `browser-qa`'s before-and-after evidence and QA results in the body for UI and API changes, verify the remote branch and PR, then return their evidence to `done` |
 | `file-issue` | File one issue an assignee can act on unaided, using two-vocabulary duplicate search, a title that survives a wrong diagnosis, and a body carrying observation, reproduction, expectation and a checkable done condition |
 | `openclaw-backup` | Verified restore point for an OpenClaw install, with an official archive, `VACUUM INTO` SQLite snapshots, a raw archive covering the session transcripts the official tool drops, a checksum manifest, and a per-install `RESTORE.md`. Manual-only via `disable-model-invocation`, so its description stays out of context until you invoke it |
 | `standup` | Daily standup update from real activity: GitHub PRs and commits, unpushed local work across worktrees, and Claude/Codex/OpenCode session history |
