@@ -125,10 +125,22 @@ def detect_org(repo_root):
     return match.group(1) if match else None
 
 
+def pr_merged_by_user(org, repo, num, user, start, end):
+    detail, _ = gh_json([
+        "api", f"repos/{org}/{repo}/pulls/{num}",
+        "--jq", "{merged: .merged, merged_at: .merged_at, merged_by: .merged_by.login}",
+    ])
+    if not isinstance(detail, dict) or not detail.get("merged"):
+        return False
+    if detail.get("merged_by") != user:
+        return False
+    return in_window(detail.get("merged_at") or "", start, end)
+
+
 def gather_github(user, org, start, end):
     wide_lo = (start - timedelta(days=1)).strftime("%Y-%m-%d")
     wide_hi = (end + timedelta(days=1)).strftime("%Y-%m-%d")
-    result = {"commits": [], "prs_created": [], "prs_reviewed": [], "prs_merged": [], "errors": []}
+    result = {"commits": [], "prs_created": [], "prs_reviewed": [], "prs_merged": [], "prs_merged_others": [], "errors": []}
     owner_filter = [f"--owner={org}"] if org else []
 
     commits, err = gh_json([
@@ -215,14 +227,18 @@ def gather_github(user, org, start, end):
             if isinstance(review, dict) and (review.get("user") or {}).get("login") == user
         ]
         if any(in_window(stamp, start, end) for stamp in stamps):
-            result["prs_reviewed"].append({
+            entry = {
                 "repo": repo,
                 "number": num,
                 "title": pr.get("title", ""),
                 "author": author,
                 "url": pr.get("url", ""),
                 "review_time_confirmed": True,
-            })
+            }
+            if org and pr_merged_by_user(org, repo, num, user, start, end):
+                result["prs_merged_others"].append(entry)
+            else:
+                result["prs_reviewed"].append(entry)
     if review_lookup_failures:
         result["errors"].append(
             f"prs_reviewed: {review_lookup_failures} review lookup(s) failed, "
