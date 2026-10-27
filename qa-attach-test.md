@@ -1,0 +1,1 @@
+Throwaway gh --attach test. The PR closes and this branch is deleted right after.
