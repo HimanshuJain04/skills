@@ -129,18 +129,25 @@ MERGE_COMMIT_RE = re.compile(r"^Merge pull request #(\d+)\b")
 
 
 def fetch_pr(org, repo, num):
-    detail, _ = gh_json([
+    detail, err = gh_json([
         "api", f"repos/{org}/{repo}/pulls/{num}",
         "--jq", "{number: .number, title: .title, author: .user.login, "
                 "url: .html_url, merged: .merged, merged_at: .merged_at, "
                 "merged_by: .merged_by.login}",
     ])
-    return detail if isinstance(detail, dict) else None
+    if err:
+        return None, err
+    if not isinstance(detail, dict):
+        return None, f"unexpected PR detail for {repo}#{num}"
+    return detail, None
 
 
-def pr_merged_by_user(org, repo, num, user, start, end):
-    detail = fetch_pr(org, repo, num)
-    if not detail or not detail.get("merged"):
+def pr_merged_by_user(org, repo, num, user, start, end, errors):
+    detail, err = fetch_pr(org, repo, num)
+    if err or not detail:
+        errors.append(f"prs_merged_others: PR detail lookup failed for {repo}#{num}" + (f": {err}" if err else ""))
+        return False
+    if not detail.get("merged"):
         return False
     if detail.get("merged_by") != user:
         return False
@@ -254,7 +261,7 @@ def gather_github(user, org, start, end):
                 "url": pr.get("url", ""),
                 "review_time_confirmed": True,
             }
-            if org and pr_merged_by_user(org, repo, num, user, start, end):
+            if org and pr_merged_by_user(org, repo, num, user, start, end, result["errors"]):
                 result["prs_merged_others"].append(entry)
             else:
                 result["prs_reviewed"].append(entry)
@@ -264,14 +271,22 @@ def gather_github(user, org, start, end):
             "those PRs are omitted"
         )
     if org:
-        merged_numbers = {pr["number"] for pr in result["prs_merged_others"]}
+        merged_keys = {(pr["repo"], pr["number"]) for pr in result["prs_merged_others"]}
         for target in merge_commit_targets(result["commits"]):
-            if target["number"] in merged_numbers:
+            key = (target["repo"], target["number"])
+            if key in merged_keys:
                 continue
-            detail = fetch_pr(org, target["repo"], target["number"])
-            if not detail or detail.get("author") == user:
+            detail, err = fetch_pr(org, target["repo"], target["number"])
+            if err or not detail:
+                result["errors"].append(f"prs_merged_others: PR detail lookup failed for {target['repo']}#{target['number']}" + (f": {err}" if err else ""))
                 continue
-            merged_numbers.add(target["number"])
+            if detail.get("author") == user:
+                continue
+            if not detail.get("merged") or detail.get("merged_by") != user:
+                continue
+            if not in_window(detail.get("merged_at") or "", start, end):
+                continue
+            merged_keys.add(key)
             result["prs_merged_others"].append({
                 "repo": target["repo"],
                 "number": target["number"],
