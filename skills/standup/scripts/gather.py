@@ -125,16 +125,35 @@ def detect_org(repo_root):
     return match.group(1) if match else None
 
 
-def pr_merged_by_user(org, repo, num, user, start, end):
+MERGE_COMMIT_RE = re.compile(r"^Merge pull request #(\d+)\b")
+
+
+def fetch_pr(org, repo, num):
     detail, _ = gh_json([
         "api", f"repos/{org}/{repo}/pulls/{num}",
-        "--jq", "{merged: .merged, merged_at: .merged_at, merged_by: .merged_by.login}",
+        "--jq", "{number: .number, title: .title, author: .user.login, "
+                "url: .html_url, merged: .merged, merged_at: .merged_at, "
+                "merged_by: .merged_by.login}",
     ])
-    if not isinstance(detail, dict) or not detail.get("merged"):
+    return detail if isinstance(detail, dict) else None
+
+
+def pr_merged_by_user(org, repo, num, user, start, end):
+    detail = fetch_pr(org, repo, num)
+    if not detail or not detail.get("merged"):
         return False
     if detail.get("merged_by") != user:
         return False
     return in_window(detail.get("merged_at") or "", start, end)
+
+
+def merge_commit_targets(commits):
+    targets = []
+    for commit in commits or []:
+        match = MERGE_COMMIT_RE.match(commit.get("message", ""))
+        if match:
+            targets.append({"repo": commit.get("repo", ""), "number": int(match.group(1))})
+    return targets
 
 
 def gather_github(user, org, start, end):
@@ -244,6 +263,23 @@ def gather_github(user, org, start, end):
             f"prs_reviewed: {review_lookup_failures} review lookup(s) failed, "
             "those PRs are omitted"
         )
+    if org:
+        merged_numbers = {pr["number"] for pr in result["prs_merged_others"]}
+        for target in merge_commit_targets(result["commits"]):
+            if target["number"] in merged_numbers:
+                continue
+            detail = fetch_pr(org, target["repo"], target["number"])
+            if not detail or detail.get("author") == user:
+                continue
+            merged_numbers.add(target["number"])
+            result["prs_merged_others"].append({
+                "repo": target["repo"],
+                "number": target["number"],
+                "title": detail.get("title", ""),
+                "author": detail.get("author", ""),
+                "url": detail.get("url", ""),
+                "review_time_confirmed": False,
+            })
     return result
 
 

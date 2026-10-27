@@ -37,7 +37,7 @@ Collapse every commit, PR, and local change for the same ticket into a single li
 Four buckets, in this order. Omit any empty bucket.
 
 - **Done.** PRs you authored that merged, plus your pushed commits. Say what landed, not that a PR merged.
-- **Merged (N).** Teammates' PRs you merged. The heading carries the count.
+- **Merged (N).** Teammates' PRs you merged, whether or not you reviewed them in the window. The heading carries the count.
 - **In progress.** Open PRs and unpushed local work such as uncommitted changes, unpushed commits, and stashes. Use sessions only to name a ticket that had real work but left no commit yet. Skip anything already covered above.
 - **Reviewed.** Teammates' PRs you reviewed but did not merge. One line total when few.
 
