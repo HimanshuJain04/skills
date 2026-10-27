@@ -18,4 +18,4 @@ When **Existing PR URL** is present, its direct read is the intended attempt; re
 
 ## On a superseding card
 
-After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation.
+After `done` verifies a superseding card against the observed base, reuse only **Existing PR URL** and preflight any still-required title/body edit as its own exact mutation. A body edit that carries a new `browser-qa` fragment passes its attach list as `gh pr edit --attach` arguments, under section 6's attach and read-back rules.
