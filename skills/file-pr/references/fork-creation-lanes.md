@@ -7,7 +7,7 @@ A fork owned by the authenticated user uses the supported `<head-owner>:<branch>
 Authenticated-user-owned fork:
 
 ```bash
-gh pr create --repo "$repository" --base "$base" --head "$head_owner:$head_branch" --title "$title" --body-file "$body_path" [--draft]
+gh pr create --repo "$repository" --base "$base" --head "$head_owner:$head_branch" --title "$title" --body-file "$body_path" [--attach "<attach-list path>" ...] [--draft]
 ```
 
 Organization-owned fork (build exact JSON from the frozen values and record its digest):
@@ -17,5 +17,7 @@ gh api --method POST "repos/$repository/pulls" --input "$create_request_json"
 ```
 
 The REST request carries exact `title`, `body`, `base`, qualified `head`, `draft`, and the selected head repository identity, including `head_repo` when required.
+
+The REST create uploads nothing. With a non-empty attach list, the body lands with its local paths, and every attach-list path then goes up through section 6's preflighted `gh pr edit <pr-url> --attach <path>` step, the same one that finishes a partial upload.
 
 Section 6 still owns everything around these two commands: the metadata check that the head belongs to the base repository's fork network, the `preflight-mutations` card immediately before creating, the `--draft` rule for the `gh pr create` form, the identical `gh pr view` read-back, and every verification and mismatch disposition after it.

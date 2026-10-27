@@ -1,9 +1,9 @@
 ---
 name: browser-qa
-description: Drive a real browser through a UI flow, or run API and endpoint QA and report structured test results. Use when the user names a flow or an endpoint to test against a URL, when verifying filters, pagination, error handling, auth or counts on an API, or after a UI or backend change lands and needs verifying in the browser.
+description: Drive a real browser through a UI flow, or run API and endpoint QA and report structured test results. Use when the user names a flow or an endpoint to test against a URL, when verifying filters, pagination, error handling, auth or counts on an API, after a UI or backend change lands, or when a PR needs before and after screenshots.
 ---
 
-I drive a real browser through the flow and I do not call it done until I watched it work. Every step gets a screenshot, the full run gets a recording, API-triggering actions get a network check, and I read the console for new errors.
+I drive a real browser through the flow and I do not call it done until I watched it work. Every step gets a screenshot, the full run gets a recording, API-triggering actions get a network check, and I read the console for new errors. A change headed for a PR also runs the same flow on the base code, so the PR shows before next to after.
 
 ## Driver priority
 
@@ -15,9 +15,13 @@ Playwright to T3 mapping: `browser_navigate` becomes `t3-code_preview_navigate`,
 
 ## Recording
 
-I record every test flow run, not just the screenshots. On T3 I bracket the flow with `t3-code_preview_recording_start` before the first step and `t3-code_preview_recording_stop` after the last one, which saves a local evidence artifact. On the `agent-browser` CLI I bracket with `record start .qa/<flow-name>.webm` and `record stop`. Playwright MCP has no video tool, so there the screenshot sequence is the record and I report video as unavailable, never faked.
+I record every test flow run, not just the screenshots. On T3 I bracket the flow with `t3-code_preview_recording_start` before the first step and `t3-code_preview_recording_stop` after the last one, which saves a local evidence artifact. On the `agent-browser` CLI I bracket with `record start <head repository root>/.qa/<flow-name>.webm`, given as an absolute path, and `record stop`, because its daemon resolves a relative path against its own working directory and the recording fails to save. Playwright MCP has no video tool, so there the screenshot sequence is the record and I report video as unavailable, never faked.
 
-Record at minimum 1920x1080, and hold 30 fps minimum on drivers that expose frame-rate control. On T3 I set the viewport with `t3-code_preview_resize` to at least that size before recording starts. On the CLI `record start` opens a fresh context at its own size, so a prior `set viewport` does not carry over: after `record stop` I check the artifact dimensions and report when the file misses the floor instead of claiming it. Neither driver exposes a frame-rate control, so I take the recorder default and report it when the file lands.
+Record at minimum 1920x1080, and hold 30 fps minimum on drivers that expose frame-rate control. On T3 I set the viewport with `t3-code_preview_resize` to at least that size before recording starts. On the CLI the recording keeps the size the page had at `record start` (observed on `agent-browser` 0.31.1), so I run `set viewport 1920 1080` before it. After `record stop` I still check the artifact dimensions and report when the file misses the floor instead of claiming it. Neither driver exposes a frame-rate control, so I take the recorder default and report it when the file lands.
+
+## Before and after
+
+When the run verifies a change headed for a PR, as `done` runs it before publishing, I load `${CLAUDE_SKILL_DIR}/references/before-after.md` before Step 1. It picks where the before side runs, fixes what both sides share, and holds the `.qa/pr-evidence.md` template. A UI change runs the flow on both sides. An API change runs, on the before side, only the cases whose expected response the change alters, and reports them in the Changed behavior table below. The before side's server is its own origin, so those cases need their own origin approval under the endpoint rules below. A run with no PR ahead of it, such as a user asking to click through a flow, skips this section.
 
 ## Input
 
@@ -33,9 +37,14 @@ When a UI change just landed and no flow was named, I ask what flow to QA, for e
 
 ```bash
 mkdir -p .qa
-[ -s .gitignore ] && [ -n "$(tail -c1 .gitignore)" ] && printf '\n' >> .gitignore
-grep -qxF '.qa/' .gitignore 2>/dev/null || printf '.qa/\n' >> .gitignore
+if exclude_file="$(git rev-parse --git-path info/exclude 2>/dev/null)"; then
+  mkdir -p "$(dirname "$exclude_file")"
+  [ -s "$exclude_file" ] && [ -n "$(tail -c1 "$exclude_file")" ] && printf '\n' >> "$exclude_file"
+  grep -qxF '.qa/' "$exclude_file" 2>/dev/null || printf '.qa/\n' >> "$exclude_file"
+fi
 ```
+
+`.git/info/exclude` ignores `.qa/` the way `.gitignore` would, without changing a tracked file, so a QA run never leaves the worktree dirty for `done` or `file-pr`.
 
 I check whether the dev server is running with `curl -s -o /dev/null -w "%{http_code}" <url>`. When it is not reachable, I ask the user to start it.
 
@@ -62,7 +71,7 @@ Local flows that touch only disposable data do not use this gate. I pass `not-ap
 
 ### Subagent prompt template
 
-> Execute the following QA test flow at {URL} using {driver: T3 preview tools | Playwright MCP tools | agent-browser CLI}. The browser session is already open at {URL} from the auth check.
+> Execute the following QA test flow at {URL} using {driver: T3 preview tools | Playwright MCP tools | agent-browser CLI}. The browser session is already open at {URL} from the auth check. Write every evidence file under {evidence dir: an absolute path ending in `.qa`, `.qa/before`, or `.qa/after`}. On the `agent-browser` CLI give every file path as an absolute path, because its daemon resolves a relative one against its own working directory and the write fails.
 >
 > Test steps. {numbered steps from the user flow description}.
 >
@@ -70,46 +79,25 @@ Local flows that touch only disposable data do not use this gate. I pass `not-ap
 >
 > That card is already authorized. Do not invoke `preflight-mutations` yourself, since you have no way to answer what it may ask. For every shared-state interaction, re-read and compare that target current guards immediately before the write. Continue under the card while they match. When a guard changed, stop the pending interaction and return the unexecuted remainder to the main agent for re-preflight instead of writing. After the write, run the card authoritative read-back, advance the guards from the observed state, and record the item as `landed`, `failed`, or `reconcile-required`. An ambiguous result is `reconcile-required`. Stop that item and report it for resolution from authoritative state. Never retry it yourself.
 >
-> For EACH step, take a snapshot first (`t3-code_preview_snapshot` on T3, `browser_snapshot` on Playwright, `snapshot -i` on the CLI). Refs go stale the instant the page changes, so re-snapshot before EVERY interaction. Execute the interaction through the same driver. Capture evidence as a screenshot file at `.qa/<NN>-<step-name>.png`: on T3 call `t3-code_preview_snapshot` with `save=true` and move the returned `screenshotPath` there; on Playwright call `browser_take_screenshot` with that filename; on the CLI use `screenshot`. Run a network check after any API-triggering action and a console check for new errors: on T3 read the pre-installed collectors through `t3-code_preview_evaluate`; on Playwright use `browser_network_requests` and `browser_console_messages`; on the CLI use `network requests` and `console`. When a driver cannot produce an evidence type, report it unavailable instead of faking it. A step with no evidence is a FAIL.
+> For EACH step, take a snapshot first (`t3-code_preview_snapshot` on T3, `browser_snapshot` on Playwright, `snapshot -i` on the CLI). Refs go stale the instant the page changes, so re-snapshot before EVERY interaction. Execute the interaction through the same driver. Capture evidence as a screenshot file at `{evidence dir}/<NN>-<step-name>.png`: on T3 call `t3-code_preview_snapshot` with `save=true` and move the returned `screenshotPath` there; on Playwright call `browser_take_screenshot` with that filename; on the CLI use `screenshot`. Run a network check after any API-triggering action and a console check for new errors: on T3 read the pre-installed collectors through `t3-code_preview_evaluate`; on Playwright use `browser_network_requests` and `browser_console_messages`; on the CLI use `network requests` and `console`. When a driver cannot produce an evidence type, report it unavailable instead of faking it. A step with no evidence is a FAIL.
 >
 > Evidence collectors (T3 only). Before the first test step, install network and console collectors with `t3-code_preview_evaluate` by wrapping fetch and XMLHttpRequest, listening for error and unhandledrejection events, and logging into page-global arrays, then record the pre-flow baseline. Re-install the collectors after every navigation, which destroys page globals. Every later network and console check reads those arrays; when the arrays are missing at read time, report the evidence unavailable for that step instead of clean.
 >
-> Recording. Start recording before the first test step and stop it after the last one, following the Recording section above. Report the result as `Recording: <path>` or, when the driver cannot record, `Recording: unavailable`.
+> Recording. Start recording before the first test step and stop it after the last one, following the Recording section above. On the `agent-browser` CLI run `set viewport 1920 1080` before `record start`. When {evidence dir} ends in `.qa/before` or `.qa/after`, record straight to `{evidence dir}/flow` with the recorder's own extension, or on T3 move the saved file there. Report the result as `Recording: <path>` or, when the driver cannot record, `Recording: unavailable`.
 >
-> Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL. A step you could not execute is FAIL, never omitted.
+> Report each step in the Step 4 format below. Every numbered step must appear with PASS or FAIL. A step you could not execute is FAIL, never omitted. When {evidence dir} ends in `.qa/before`, the code under test is the base, which is expected to differ: report each step's observation and measurements with no PASS or FAIL.
 >
 > Teardown. Stop the recording first when it is still running. On Playwright MCP, `browser_close`. On T3, leave the preview tab open so the user keeps what they watched. On the `agent-browser` CLI, run `agent-browser close` after `record stop`.
 
 ## Step 4: Report
 
-```
-QA: <flow description>
+I report in the QA Test Results format below, one UI flow table per flow, one row per numbered step. On failure the row states the exact expected versus actual and names the screenshot. A browser step is PASS or FAIL, never BLOCKED; a step I could not execute is FAIL.
 
-Step 1: <description>
-  PASS: <observation>
+For a run headed for a PR, `.qa/pr-evidence.md` is the handoff to `file-pr`, which pastes it into the PR body and attaches every file it references. I report its path and stop there. A file that uploads after the PR exists goes up through `file-pr`'s `gh pr edit --attach` step, which rewrites its embed in the body.
 
-Step 2: <description>
-  PASS: <observation>
-  API: POST /api/endpoint -> 201
+## QA Test Results report
 
-Step 3: <description>
-  FAIL: Expected X, got Y
-  Screenshot: .qa/03-step-name.png
-
-Console errors: <list or "none">
-Screenshots: .qa/ (<N> files)
-Recording: <path or "unavailable">
-
-VERDICT: <ALL PASS | PARTIAL | FAIL> (N/M steps)
-```
-
-On failure I include the exact expected versus actual and reference the screenshot.
-
-The recording path above is the handoff to `file-pr`, which attaches it at PR creation. I report the path and stop there; the late-attach rule in CLAUDE.md covers recordings that land after the PR exists.
-
-## QA Test Results report (endpoint and API QA)
-
-When the run tests an API or endpoint and not only a click path, I build a test matrix and report the structured results below, alongside the Step 4 browser report or in place of it. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case whose request I dispatched but which captured no response is a FAIL, never an assumed pass.
+When the run tests an API or endpoint and not only a click path, I build a test matrix and add its tables to the same report. I group cases by category, filters, error handling, pagination, and consistency, then exercise each one directly and record the actual response against the expected one. A case whose request I dispatched but which captured no response is a FAIL, never an assumed pass.
 
 Endpoint execution and auth. Steps 2 and 3 authenticate and drive only the browser, so an endpoint-only run needs its own executor and authenticated context.
 
@@ -129,15 +117,24 @@ I capture the environment once so the run is reproducible, and every case row re
 ### Report template
 
 ```
-## QA Test Results - <feature or endpoint>
+## QA Test Results for <feature, flow, or endpoint>
 
 ### Test Environment
 - Date: <YYYY-MM-DD>
 - Session origin: <normalized origin Step 2 authenticated against>
 - Approved endpoint origin: <normalized origin and the date approved, when it differs from the session origin>
 - Backend: <url> (<database>)
+- Before: <merge-base SHA, or the revision a deployed environment reports> at <URL>, from <before source>
+- After: <HEAD SHA>, plus the uncommitted working tree when there is one, at <URL>
+- Widths: <px, comma separated>
 - Test data: <seeded records and their IDs>
 - Auth: <account, role, IDs>
+
+### UI flow: <flow description>
+
+| # | Step | Expected | Result |
+|---|------|----------|--------|
+| 1 | <step> | <expected> | PASS/FAIL: <observation, API status, screenshot path on FAIL> |
 
 ### API Endpoint: `<METHOD /path>`
 
@@ -153,14 +150,21 @@ I capture the environment once so the run is reproducible, and every case row re
 |---|------|---------|----------|--------|
 | N | <bad input> | `<path, query, body, safe headers; secrets redacted>` | <status and message> | PASS/FAIL/BLOCKED: <observed status and message, or the blocker> |
 
+#### Changed behavior
+
+| # | Test | Before | After |
+|---|------|--------|-------|
+| N | <case from a table above> | <observed base response> | <observed head response> |
+
 ### Browser UI Testing
-- <what rendered, with screenshot paths under .qa/>
+- Console errors: <list or "none">
+- Screenshots: <N> files under .qa/; Recording: <path or "unavailable">
 - <blockers hit, stated plainly, never hidden>
 
 ### Findings
 - <what passed, what failed, and any behavior that is by design>
 
-VERDICT: <ALL PASS | PARTIAL | FAIL | BLOCKED> (<passed>/<executed> cases, <blocked> blocked)
+VERDICT: <ALL PASS | PARTIAL | FAIL | BLOCKED> (<passed>/<executed> steps and cases, <blocked> blocked)
 ```
 
-I keep one table per category and add only the categories the endpoint has. A case whose request I never dispatched is BLOCKED, never PASS or FAIL, and so is a case the unauthenticated-response rule above blocks. A request counts as dispatched once its bytes left the client, so a refused connection or a failed DNS lookup is not dispatched. When dispatch cannot be determined after a fetch rejection, I count the case as executed with FAIL and state that dispatch is unknown; I never claim it was dispatched or retry it. I list a blocked case with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases executed, or BLOCKED when none did. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.
+I add only the sections the run has: the UI flow table for a click path, one table per category the endpoint has, and the Before, After, and Widths lines and the Changed behavior table only on a run headed for a PR. Rows number continuously across tables, so Findings can cite a case by number, and a Changed behavior row reuses the number of the case it restates. The copy in `.qa/pr-evidence.md` is the report's PR form. Its Test Environment keeps Date, the Before revision and source without a URL, `After: this PR's head`, Widths, Test data, and Auth reduced to the role, and drops origins, backend URLs, account names, and record IDs, which stay in the chat report. Case rows stay as written, and `file-pr`'s data approval covers them. Its Browser UI Testing section gives the console result and counts, for example `Screenshots: 6 and recordings: 2, embedded in the Before and after section`, names no paths or tools, and is left out when no UI ran. A case whose request I never dispatched is BLOCKED, never PASS or FAIL, and so is a case the unauthenticated-response rule above blocks. A request counts as dispatched once its bytes left the client, so a refused connection or a failed DNS lookup is not dispatched. When dispatch cannot be determined after a fetch rejection, I count the case as executed with FAIL and state that dispatch is unknown; I never claim it was dispatched or retry it. I list a blocked case with its blocker, keep it out of the executed count, and cap the verdict at PARTIAL when other cases executed, or BLOCKED when none did. The Browser UI Testing section reuses the screenshots and recording from the browser flow above, so a mixed run reports the click path and the endpoints behind it in one place. Findings state failures and by-design behavior explicitly; a silent omission reads as a pass it never earned.

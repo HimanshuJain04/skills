@@ -103,6 +103,8 @@ Add this fixed evidence index. Each observation states what ran or was directly 
 | Review | <observation> | <state> | <gap/action> |
 ```
 
+When PR-bound work changes UI or API behavior, the Browser observation names `.qa/pr-evidence.md` and the SHA-256 of it and of every file it embeds. Browser is `verified` only when the fragment exists and its VERDICT is ALL PASS. Each of these also needs the user's acceptance, recorded in this Browser observation and never in the fragment: a Before revision other than **Merge-base commit** or one that could not be read, any `Before: unavailable` line or cell, and **Out-of-scope worktree content** other than `none`, which shaped the after side but does not ship. Without that acceptance Browser is `blocked`. After publication, Browser is `deferred` while an attach-list embed in the PR body still points at a local path. Its next action is a preflighted `gh pr edit <pr-url> --attach <path>` for each such path, run from the repository root and followed by a body read-back, as `file-pr` section 6 runs it.
+
 Preserve every required subcheck inside its facet. Aggregate to the weakest state in this order: `blocked`, `deferred`, `assumed`, `pending`, then `verified`; ignore only allowed `not-applicable` subchecks. The Review row names `Local review` and `PR review` separately. Before a PR, required local review may be `verified` while PR review is `pending`, making Review `pending`; after publication, both required subchecks must be `verified` for Review to become `verified`.
 
 Subject only to the `ready-to-publish` exception below, set final **Readiness** to `ready` only when every request row and required lane is `verified` and every evidence facet is `verified` or `not-applicable`. Any required `pending`, `assumed`, `deferred`, or `blocked` row yields `not ready` and sets the **Evidence ceiling**.
@@ -152,7 +154,7 @@ External-only work uses:
 
 `file-pr` accepts only a current Git card with `ready-to-publish`. It commits verified content when needed, publishes, records the remote and PR read-back, then returns to `done`.
 
-When `file-pr` authoritatively identifies the landed PR but observes that its base advanced, create a superseding verification card for the same request, branch, head, content, and **Existing PR URL**. Bind its base tip and merge base to the observed PR, then rerun every base-dependent diff, request-accounting, test, and review check. Preserve the landed PR identity and create evidence; invalidate the old base and every conclusion derived from it. The superseding card may return to `file-pr` only for that existing PR and can never authorize another create.
+When `file-pr` authoritatively identifies the landed PR but observes that its base advanced, create a superseding verification card for the same request, branch, head, content, and **Existing PR URL**. Bind its base tip and merge base to the observed PR, then rerun every base-dependent diff, request-accounting, test, and review check, and rerun `browser-qa`, which recaptures both sides and rewrites the fragment. Preserve the landed PR identity and create evidence; invalidate the old base and every conclusion derived from it. The superseding card may return to `file-pr` only for that existing PR and can never authorize another create.
 
 On the ordinary post-publication run, or after that rebind completes, validate the recorded commit transition with:
 
