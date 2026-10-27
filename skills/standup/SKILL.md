@@ -34,11 +34,12 @@ Keep it short and flat. One ticket is one line. A whole standup reads aloud in w
 
 Collapse every commit, PR, and local change for the same ticket into a single line. Branch names and PR titles carry the ticket number.
 
-Three buckets, in this order. Omit any empty bucket.
+Four buckets, in this order. Omit any empty bucket.
 
-- **Done.** Merged PRs and pushed commits. Say what landed, not that a PR merged.
+- **Done.** PRs you authored that merged, plus your pushed commits. Say what landed, not that a PR merged.
+- **Merged (N).** Teammates' PRs you merged, whether or not you reviewed them in the window. The heading carries the count.
 - **In progress.** Open PRs and unpushed local work such as uncommitted changes, unpushed commits, and stashes. Use sessions only to name a ticket that had real work but left no commit yet. Skip anything already covered above.
-- **Reviewed.** Teammates' PRs the user reviewed. One line total when few.
+- **Reviewed.** Teammates' PRs you reviewed but did not merge. One line total when few.
 
 ## Output format
 
@@ -50,6 +51,10 @@ Always output the standup in markdown, using this structure.
 ### Done
 
 - **<ticket>**: <what landed> (#<pr>)
+
+### Merged (<n>)
+
+- <teammate>'s **<ticket>** (#<pr>)
 
 ### In progress
 

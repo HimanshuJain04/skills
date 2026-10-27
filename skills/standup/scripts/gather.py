@@ -125,10 +125,48 @@ def detect_org(repo_root):
     return match.group(1) if match else None
 
 
+MERGE_COMMIT_RE = re.compile(r"^Merge pull request #(\d+)\b")
+
+
+def fetch_pr(org, repo, num):
+    detail, err = gh_json([
+        "api", f"repos/{org}/{repo}/pulls/{num}",
+        "--jq", "{number: .number, title: .title, author: .user.login, "
+                "url: .html_url, merged: .merged, merged_at: .merged_at, "
+                "merged_by: .merged_by.login}",
+    ])
+    if err:
+        return None, err
+    if not isinstance(detail, dict):
+        return None, f"unexpected PR detail for {repo}#{num}"
+    return detail, None
+
+
+def pr_merged_by_user(org, repo, num, user, start, end, errors):
+    detail, err = fetch_pr(org, repo, num)
+    if err or not detail:
+        errors.append(f"prs_merged_others: PR detail lookup failed for {repo}#{num}" + (f": {err}" if err else ""))
+        return False
+    if not detail.get("merged"):
+        return False
+    if detail.get("merged_by") != user:
+        return False
+    return in_window(detail.get("merged_at") or "", start, end)
+
+
+def merge_commit_targets(commits):
+    targets = []
+    for commit in commits or []:
+        match = MERGE_COMMIT_RE.match(commit.get("message", ""))
+        if match:
+            targets.append({"repo": commit.get("repo", ""), "number": int(match.group(1))})
+    return targets
+
+
 def gather_github(user, org, start, end):
     wide_lo = (start - timedelta(days=1)).strftime("%Y-%m-%d")
     wide_hi = (end + timedelta(days=1)).strftime("%Y-%m-%d")
-    result = {"commits": [], "prs_created": [], "prs_reviewed": [], "prs_merged": [], "errors": []}
+    result = {"commits": [], "prs_created": [], "prs_reviewed": [], "prs_merged": [], "prs_merged_others": [], "errors": []}
     owner_filter = [f"--owner={org}"] if org else []
 
     commits, err = gh_json([
@@ -215,19 +253,48 @@ def gather_github(user, org, start, end):
             if isinstance(review, dict) and (review.get("user") or {}).get("login") == user
         ]
         if any(in_window(stamp, start, end) for stamp in stamps):
-            result["prs_reviewed"].append({
+            entry = {
                 "repo": repo,
                 "number": num,
                 "title": pr.get("title", ""),
                 "author": author,
                 "url": pr.get("url", ""),
                 "review_time_confirmed": True,
-            })
+            }
+            if org and pr_merged_by_user(org, repo, num, user, start, end, result["errors"]):
+                result["prs_merged_others"].append(entry)
+            else:
+                result["prs_reviewed"].append(entry)
     if review_lookup_failures:
         result["errors"].append(
             f"prs_reviewed: {review_lookup_failures} review lookup(s) failed, "
             "those PRs are omitted"
         )
+    if org:
+        merged_keys = {(pr["repo"], pr["number"]) for pr in result["prs_merged_others"]}
+        for target in merge_commit_targets(result["commits"]):
+            key = (target["repo"], target["number"])
+            if key in merged_keys:
+                continue
+            detail, err = fetch_pr(org, target["repo"], target["number"])
+            if err or not detail:
+                result["errors"].append(f"prs_merged_others: PR detail lookup failed for {target['repo']}#{target['number']}" + (f": {err}" if err else ""))
+                continue
+            if detail.get("author") == user:
+                continue
+            if not detail.get("merged") or detail.get("merged_by") != user:
+                continue
+            if not in_window(detail.get("merged_at") or "", start, end):
+                continue
+            merged_keys.add(key)
+            result["prs_merged_others"].append({
+                "repo": target["repo"],
+                "number": target["number"],
+                "title": detail.get("title", ""),
+                "author": detail.get("author", ""),
+                "url": detail.get("url", ""),
+                "review_time_confirmed": False,
+            })
     return result
 
 
