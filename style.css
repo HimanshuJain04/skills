@@ -1,4 +1,5 @@
 body{font-family:sans-serif;background:#f4f4f5;margin:0;padding:24px}
 .card{max-width:1036px;margin:0 auto;background:#fff;padding:16px;overflow-x:auto}
 td,th{border-bottom:1px solid #ddd;padding:12px;text-align:left}
-.title{white-space:nowrap;min-width:900px}
+#tasks{width:100%;table-layout:fixed}
+.title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:60%}
