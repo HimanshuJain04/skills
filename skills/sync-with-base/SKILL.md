@@ -31,7 +31,7 @@ git remote -v                          # confirm origin exists
 - **Detached HEAD** (`git symbolic-ref --quiet --short HEAD` prints nothing and exits non-zero) → stop and ask the user to check out a branch. There is no branch to merge into or to push, and `git rev-parse --abbrev-ref HEAD` would misreport the literal string `HEAD` as the branch name.
 - **Working tree is not clean** (`git status --porcelain` prints anything) → **stop and report.** List the uncommitted / untracked files and ask the user to commit or stash them first. Do not merge on top of a dirty tree. A conflict resolution could clobber work git isn't tracking, and that work is unrecoverable. Do not auto-stash unless the user explicitly asks you to.
 
-Record the current branch name. You'll need it for the push, and it's your guard against ever pushing to the base.
+Record the current branch name. Require it to match `^[A-Za-z0-9._/-]+$`, the same allowlist step 2 applies to the base, because step 8 interpolates it into a push command and git permits characters like `$`, `(`, and `)` in a ref. If it does not match, stop and ask the user to rename the branch. You'll need this name for the push, and it's your guard against ever pushing to the base.
 
 ### 2. Determine the base branch
 
@@ -115,7 +115,7 @@ After resolving, before staging, **show a short summary of every conflicted file
 
 A merge with zero textual conflicts can still break the branch. The base may have renamed or removed a symbol the current branch still uses. Catch that now, not after pushing.
 
-Run the project's acceptance gate. Where the repository defines one (this repo's convention is `/done`), that is the gate: it selects the lanes the merge touched and verifies each one. Scope it to verification and repair only: stop at its readiness card and take none of the handoffs it ends in. `sync-with-base` owns the merge commit (step 7) and the push (step 8), so do not let the gate hand off to `git-commit` or `file-pr`; that would commit or publish before steps 7-8 resume and break the single-commit-owner invariant. If the gate reports required pre-publication verification as blocked, stop and hand back to the user rather than committing a broken merge. When no such gate exists, fall back to the fastest check that proves the merge did not break the branch, typically the type-check:
+Run the project's acceptance gate. Where the repository defines one (this repo's convention is `/done`), that is the gate: it selects the lanes the merge touched and verifies each one. It must use the `<base>` and `<base-remote>` resolved in step 2, with that base's tip and the merge-base, for its lane selection, diff, and review. A gate that picks its own base (for example one that only ever refreshes an `origin` ref) can verify a different change set than the one being merged, so if it selects or refreshes any other base or remote, stop and hand back to the user rather than committing. Scope it to verification and repair only: stop at its readiness card and take none of the handoffs it ends in. `sync-with-base` owns the merge commit (step 7) and the push (step 8), so do not let the gate hand off to `git-commit` or `file-pr`; that would commit or publish before steps 7-8 resume and break the single-commit-owner invariant. If the gate reports required pre-publication verification as blocked, stop and hand back to the user rather than committing a broken merge. When no such gate exists, fall back to the fastest check that proves the merge did not break the branch, typically the type-check:
 
 ```bash
 pnpm type-check
@@ -154,15 +154,19 @@ Confirm before moving on that `git status --porcelain` is empty, so no verified 
 
 Push **the branch you recorded in step 1** to its own publication remote, never the base. That remote is the one you normally push this branch to, which may be `origin` or your fork. Call it `<branch-remote>`. It is independent of `<base-remote>`: a fork you can write to need not hold the authoritative base.
 
-Bind the destination ref yourself; do not let git's config choose it. A bare `git push` follows `push.default` and `remote.<name>.push`, so with `push.default=upstream` a branch tracking `<base-remote>/<base>` would push straight to the base even though step 2's guard passed on the local branch name. Push with an explicit `source:destination` refspec that names the current branch on both sides, and refuse if the destination equals the base:
+Bind the destination ref yourself; do not let git's config choose it. A bare `git push` follows `push.default` and `remote.<name>.push`, so with `push.default=upstream` a branch tracking `<base-remote>/<base>` would push straight to the base even though step 2's guard passed on the local branch name.
+
+Work out the destination branch, `<dest>`. If the current branch has a configured upstream on `<branch-remote>`, `<dest>` is that upstream's branch name (`git rev-parse --abbrev-ref '@{upstream}'`, then strip the remote prefix). This matters when the local name differs from the branch the PR actually tracks: a local `review-99` tracking `<branch-remote>/feature-x` must update `feature-x`, not create `review-99`. If there is no upstream, the branch is unpublished and `<dest>` is `<branch>`, which the push creates. Either way, require `<dest>` to pass the step 2 allowlist and **refuse if `<dest>` equals `<base>`**: that is the never-push-base rule, and no config may override it.
+
+Push with an explicit `source:destination` refspec:
 
 ```bash
-git push "<branch-remote>" "<branch>:refs/heads/<branch>"
+git push "<branch-remote>" "<branch>:refs/heads/<dest>"
 ```
 
-The destination is `<branch>`, the branch you recorded in step 1. If it ever resolves to `<base>`, stop: that is the never-push-base rule, and no config should be able to override it. Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
+Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
 
-If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its publication destination. Compare `HEAD` with that destination (`git rev-list --count "<branch-remote>/<branch>".."<branch>"`, fetching the remote branch first) and push the same explicit refspec only when the branch is ahead. When it is already in sync, there is nothing to push.
+If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its destination. Decide whether to push by comparing against `<branch-remote>/<dest>`: fetch it, and if that remote-tracking ref does not exist (an unpublished branch), treat it as zero remote commits and push. Otherwise count with `git rev-list --count "<branch-remote>/<dest>".."<branch>"` and push the same explicit refspec only when the branch is ahead. When it is already in sync, there is nothing to push.
 
 ### 9. Report
 
@@ -187,7 +191,8 @@ gh pr view --json baseRefName -q .baseRefName  # 2. resolve <base> (PR target)
 git fetch "<base-remote>" "<base>"           # 3. fetch only
 git merge "<base-remote>/<base>"             # 4. merge into current branch
 #   conflicts -> resolving-merge-conflicts skill (stop before it commits) + data-loss gate (5)
-pnpm type-check                              # 6. acceptance gate (/done where defined); must be green
-git commit --no-edit  # or: git add -A && git commit  # 7. commit the merge AND any step-6 repairs
-git push "<branch-remote>" "<branch>:refs/heads/<branch>"  # 8. explicit dest; never <base>
+pnpm type-check                              # 6. acceptance gate (/done where defined, same <base>); green
+#   7. commit: merge -> git commit --no-edit; clean merge + step-6 repairs -> git add -A && git commit
+#      clean merge, no repairs -> nothing to commit, skip
+git push "<branch-remote>" "<branch>:refs/heads/<dest>"  # 8. <dest>=PR head ref; never <base>
 ```
