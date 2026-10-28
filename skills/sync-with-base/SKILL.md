@@ -44,7 +44,7 @@ Resolve the base in this order and **report which one you picked and how**:
    gh pr view --json baseRefName -q .baseRefName
    ```
 
-   A non-empty result is the base. This is the normal path and the whole point of the skill. It merges what the PR actually targets.
+   A non-empty result is the base. This is the normal path and the whole point of the skill. It merges what the PR actually targets. `gh pr view` with no selector resolves the PR from the current branch, which is not a unique identity: a PR-specific branch config or more than one open PR on this branch can make it return a different PR's base. If the branch maps to more than one candidate PR, or the selection is otherwise ambiguous, stop and have the user pass the specific PR number or URL rather than merging the wrong base.
 3. **No PR yet (or `gh` is unavailable / unauthenticated).** Fall back to the repo's default branch and say so:
 
    ```bash
@@ -138,11 +138,13 @@ What the tree needs to push depends on both the merge outcome and whether step 6
 
   `--no-edit` keeps git's default merge message (`Merge remote-tracking branch '<base-remote>/<base>' into <branch>`), the right conventional message here.
 
-- **Clean or fast-forward merge, and step 6 edited files.** Git already made the merge commit, so the repairs are sitting uncommitted. Commit them on top so the pushed tree is the verified one:
+- **Clean or fast-forward merge, and step 6 edited files.** Git already made the merge commit, so the repairs are sitting uncommitted. Commit them on top so the pushed tree is the verified one, staging only the paths step 6 actually changed:
 
   ```bash
-  git add -A && git commit -m "fix: adapt to <base> after merge"
+  git add <the files you repaired in step 6> && git commit -m "fix: adapt to <base> after merge"
   ```
+
+  Do not use `git add -A`: verification can leave reports, QA evidence, or generated files in the tree, and those are out-of-scope content the `/done` contract says never to stage. If any path you did not repair is dirty, stop and report it rather than committing.
 
 - **Clean or fast-forward merge with no step-6 edits.** There is genuinely nothing to commit. Go to step 8.
 
@@ -195,7 +197,7 @@ git fetch "<base-remote>" "<base>"           # 3. fetch only
 git merge "<base-remote>/<base>"             # 4. merge into current branch
 #   conflicts -> resolving-merge-conflicts skill (stop before it commits) + data-loss gate (5)
 pnpm type-check                              # 6. acceptance gate (/done where defined, same <base>); green
-#   7. commit: merge -> git commit --no-edit; clean merge + step-6 repairs -> git add -A && git commit
+#   7. commit: merge -> git commit --no-edit; clean merge + step-6 repairs -> git add <repaired paths> (never -A)
 #      clean merge, no repairs -> nothing to commit, skip
 git push "<branch-remote>" "<branch>:refs/heads/<branch>"  # 8. same name; never <base>; ask if config disagrees
 ```
