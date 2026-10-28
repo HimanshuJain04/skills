@@ -115,7 +115,7 @@ After resolving, before staging, **show a short summary of every conflicted file
 
 A merge with zero textual conflicts can still break the branch. The base may have renamed or removed a symbol the current branch still uses. Catch that now, not after pushing.
 
-Run the project's acceptance gate. Where the repository defines one (this repo's convention is `/done`), that is the gate: it selects the lanes the merge touched and verifies each one. When no such gate exists, fall back to the fastest check that proves the merge did not break the branch, typically the type-check:
+Run the project's acceptance gate. Where the repository defines one (this repo's convention is `/done`), that is the gate: it selects the lanes the merge touched and verifies each one. Scope it to verification and repair only: stop at its readiness card and take none of the handoffs it ends in. `sync-with-base` owns the merge commit (step 7) and the push (step 8), so do not let the gate hand off to `git-commit` or `file-pr`; that would commit or publish before steps 7-8 resume and break the single-commit-owner invariant. If the gate reports required pre-publication verification as blocked, stop and hand back to the user rather than committing a broken merge. When no such gate exists, fall back to the fastest check that proves the merge did not break the branch, typically the type-check:
 
 ```bash
 pnpm type-check
@@ -152,15 +152,17 @@ Confirm before moving on that `git status --porcelain` is empty, so no verified 
 
 ### 8. Push the current branch
 
-Push **the branch you recorded in step 1** to its own upstream, never the base. That upstream is the remote you normally push this branch to, which may be `origin` or your fork. It is independent of `<base-remote>`: a fork you can write to need not hold the authoritative base.
+Push **the branch you recorded in step 1** to its own publication remote, never the base. That remote is the one you normally push this branch to, which may be `origin` or your fork. Call it `<branch-remote>`. It is independent of `<base-remote>`: a fork you can write to need not hold the authoritative base.
+
+Bind the destination ref yourself; do not let git's config choose it. A bare `git push` follows `push.default` and `remote.<name>.push`, so with `push.default=upstream` a branch tracking `<base-remote>/<base>` would push straight to the base even though step 2's guard passed on the local branch name. Push with an explicit `source:destination` refspec that names the current branch on both sides, and refuse if the destination equals the base:
 
 ```bash
-git push <branch-remote> HEAD
+git push "<branch-remote>" "<branch>:refs/heads/<branch>"
 ```
 
-If this branch already tracks an upstream, a bare `git push` targets it. `HEAD` pushes the current branch to its matching remote branch; it cannot target the base unless you are standing on it, which step 2 already refused. Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
+The destination is `<branch>`, the branch you recorded in step 1. If it ever resolves to `<base>`, stop: that is the never-push-base rule, and no config should be able to override it. Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
 
-If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its upstream. Compare with `git status -sb` (or `git rev-list --count @{u}..HEAD`, when an upstream is set) and push only when the branch is ahead. When it is already in sync, there is nothing to push.
+If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its publication destination. Compare `HEAD` with that destination (`git rev-list --count "<branch-remote>/<branch>".."<branch>"`, fetching the remote branch first) and push the same explicit refspec only when the branch is ahead. When it is already in sync, there is nothing to push.
 
 ### 9. Report
 
@@ -187,5 +189,5 @@ git merge "<base-remote>/<base>"             # 4. merge into current branch
 #   conflicts -> resolving-merge-conflicts skill (stop before it commits) + data-loss gate (5)
 pnpm type-check                              # 6. acceptance gate (/done where defined); must be green
 git commit --no-edit  # or: git add -A && git commit  # 7. commit the merge AND any step-6 repairs
-git push <branch-remote> HEAD                # 8. current branch only, never <base>
+git push "<branch-remote>" "<branch>:refs/heads/<branch>"  # 8. explicit dest; never <base>
 ```
