@@ -22,12 +22,13 @@ The second rule: **lose no work.** A merge is done only when the intent of *both
 Run these checks before touching anything. If any fails, stop and tell the user what's wrong; don't try to fix it silently.
 
 ```bash
-git rev-parse --abbrev-ref HEAD        # current branch
+git symbolic-ref --quiet --short HEAD  # current branch; fails on a detached HEAD
 git status --porcelain                 # working-tree cleanliness
 git remote -v                          # confirm origin exists
 ```
 
 - **Not a git repo, or no `origin` remote** → stop, report.
+- **Detached HEAD** (`git symbolic-ref --quiet --short HEAD` prints nothing and exits non-zero) → stop and ask the user to check out a branch. There is no branch to merge into or to push, and `git rev-parse --abbrev-ref HEAD` would misreport the literal string `HEAD` as the branch name.
 - **Working tree is not clean** (`git status --porcelain` prints anything) → **stop and report.** List the uncommitted / untracked files and ask the user to commit or stash them first. Do not merge on top of a dirty tree. A conflict resolution could clobber work git isn't tracking, and that work is unrecoverable. Do not auto-stash unless the user explicitly asks you to.
 
 Record the current branch name. You'll need it for the push, and it's your guard against ever pushing to the base.
@@ -56,35 +57,41 @@ Resolve the base in this order and **report which one you picked and how**:
 
 **Never silently assume `dev` (or any fixed name).** If every method above comes up empty, stop and ask the user which branch to merge.
 
+**Validate the name before any shell command uses it.** Require the resolved base to match `^[A-Za-z0-9._/-]+$`. Git permits characters like `$`, `(`, and `)` in a ref, and `git check-ref-format` accepts them, so an unchecked name such as `topic$(cmd)` can trigger a command substitution when it is interpolated into a shell command. If the name does not match, stop and ask the user for a valid branch name. Quote the name in every command that uses it.
+
+**Resolve which remote hosts the base.** `gh pr view` returns only the base branch *name*, not the repository that holds it. In a single-remote setup that repository is `origin`. In a fork workflow the base lives in the upstream parent, usually the remote named `upstream`, and `origin` is your own fork whose copy of the base can be stale or absent. Pick the remote whose URL matches the PR's base repository, matching by URL rather than trusting the name, and call it `<base-remote>`. It may differ from the remote you push your branch to in step 8.
+
 Now guard against a degenerate target:
 
 - **The current branch *is* the resolved base** (you're on `main`/`dev`/`staging` itself) → stop. There is nothing to merge into, and pushing from here would target the shared branch. Ask the user which feature branch they meant.
 
-Call the resolved base `<base>` for the rest of this workflow.
+Call the resolved base `<base>` and its remote `<base-remote>` for the rest of this workflow.
 
 ### 3. Fetch the latest base branch
 
 ```bash
-git fetch origin <base>
+git fetch "<base-remote>" "<base>"
 ```
 
-Fetch only. Do not pull-with-rebase, do not `git pull` (which can pull the wrong tracking branch). You want `origin/<base>` up to date so the merge sees the real latest.
+Fetch only. Do not pull-with-rebase, do not `git pull` (which can pull the wrong tracking branch). You want `<base-remote>/<base>` up to date so the merge sees the real latest.
 
 ### 4. Merge the base into the current branch
 
 ```bash
-git merge origin/<base>
+git merge "<base-remote>/<base>"
 ```
 
 Three outcomes:
 
-- **"Already up to date"** → the branch already has everything in the base. Nothing to commit, nothing to push. Tell the user and stop.
-- **Clean merge (fast-forward or auto-merged)** → git created/moved the commit for you. Skip to step 6 (verify).
+- **"Already up to date"** → the branch already contains everything in the base, so there is nothing to merge. This does not mean the branch is pushed: it can still hold local commits its upstream lacks. Skip the merge-related steps, then in step 8 check whether the current branch is ahead of its upstream and push if it is. If it is already in sync, tell the user there was nothing to do and stop.
+- **Clean merge (fast-forward or auto-merged)** → git created/moved the commit for you. Go to step 6 (verify). Verification there may still edit files, so do not assume there is nothing left to commit.
 - **Conflicts** → git halts mid-merge. Go to step 5. **Never `git merge --abort`** to escape. Resolve it.
 
 ### 5. Resolve conflicts without losing data
 
-Invoke the **resolving-merge-conflicts** skill and follow it. It holds the conflict-resolution discipline (read both sides' history and intent, merge semantically, preserve both where possible). This skill adds the data-loss gate on top:
+Invoke the **resolving-merge-conflicts** skill for its conflict-resolution discipline: read both sides' history and intent, merge semantically, preserve both where possible, and place every hunk. That skill also runs the project's checks and finishes the merge with a commit. Do not hand those final stages to it here. `sync-with-base` owns verification (step 6) and the single merge commit (step 7), so stop once the conflicts are resolved and staged and return to this workflow. Otherwise the merge gets committed twice: once inside that skill and again at step 7, where the second `git commit` finds nothing to commit and fails.
+
+This skill adds the data-loss gate on top:
 
 **Preserve both intents by default.** When both sides changed nearby but compatible things, the resolution keeps both. That is not data loss. It is the normal, correct outcome, and you do not need to ask.
 
@@ -96,7 +103,7 @@ Invoke the **resolving-merge-conflicts** skill and follow it. It holds the confl
 
 For each of these, **do not pick for the user.** Show them, in plain language:
 - which file and what the conflict is about,
-- what `origin/<base>` did and why (commit message / PR intent),
+- what `<base-remote>/<base>` did and why (commit message / PR intent),
 - what their branch did and why,
 - that the two cannot both survive, and which one your resolution would keep and which it would drop.
 
@@ -108,6 +115,8 @@ After resolving, before staging, **show a short summary of every conflicted file
 
 A merge with zero textual conflicts can still break the branch. The base may have renamed or removed a symbol the current branch still uses. Catch that now, not after pushing.
 
+Run the project's acceptance gate. Where the repository defines one (this repo's convention is `/done`), that is the gate: it selects the lanes the merge touched and verifies each one. When no such gate exists, fall back to the fastest check that proves the merge did not break the branch, typically the type-check:
+
 ```bash
 pnpm type-check
 ```
@@ -115,30 +124,43 @@ pnpm type-check
 - **Green** → continue.
 - **Red** → the merge introduced breakage. Fix it at the root (usually adapting the current branch's code to the base's new shape, read the actual change, don't paper over it with `as any` or a null check). Re-run until green. If it stays red after a genuine attempt and you don't understand the type model, stop and hand it back to the user rather than pushing a broken branch.
 
-(If the user asked for the fuller `/done` pipeline instead, run that here.)
+Any fix you make here changes files that are not yet committed. Step 7 commits them, so note that the branch is not ready to push straight from a clean merge.
 
 ### 7. Commit the merge
 
-- If step 4 auto-committed (clean/fast-forward merge), there's nothing to commit, so go to step 8.
-- If you resolved conflicts, the merge is staged but not committed. Commit it:
+What the tree needs to push depends on both the merge outcome and whether step 6 edited anything. Do not decide from the merge outcome alone: a clean merge that needed a verification repair still has uncommitted work that `git push` would otherwise leave behind.
 
-```bash
-git commit --no-edit
-```
+- **You resolved conflicts (step 5).** The merge is staged but not committed. Stage any step-6 repairs with `git add` so they land in the same commit, then:
 
-`--no-edit` keeps git's default merge message (`Merge remote-tracking branch 'origin/<base>' into <branch>`), which is the right, conventional message here. If any post-merge fixes from step 6 aren't yet staged, `git add` them first so they land in the same merge commit.
+  ```bash
+  git commit --no-edit
+  ```
+
+  `--no-edit` keeps git's default merge message (`Merge remote-tracking branch '<base-remote>/<base>' into <branch>`), the right conventional message here.
+
+- **Clean or fast-forward merge, and step 6 edited files.** Git already made the merge commit, so the repairs are sitting uncommitted. Commit them on top so the pushed tree is the verified one:
+
+  ```bash
+  git add -A && git commit -m "fix: adapt to <base> after merge"
+  ```
+
+- **Clean or fast-forward merge with no step-6 edits.** There is genuinely nothing to commit. Go to step 8.
+
+Confirm before moving on that `git status --porcelain` is empty, so no verified change is left behind in the working tree.
 
 **Commit as the repo's own git identity.** Never add a `Co-Authored-By: Claude` trailer and never mention Claude / AI in the message.
 
 ### 8. Push the current branch
 
-Push **the branch you recorded in step 1**, to its own upstream, never the base.
+Push **the branch you recorded in step 1** to its own upstream, never the base. That upstream is the remote you normally push this branch to, which may be `origin` or your fork. It is independent of `<base-remote>`: a fork you can write to need not hold the authoritative base.
 
 ```bash
-git push origin HEAD
+git push <branch-remote> HEAD
 ```
 
-`HEAD` pushes the current branch to the matching remote branch; it cannot accidentally target the base unless you're standing on it, which step 2 already refused. Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
+If this branch already tracks an upstream, a bare `git push` targets it. `HEAD` pushes the current branch to its matching remote branch; it cannot target the base unless you are standing on it, which step 2 already refused. Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
+
+If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its upstream. Compare with `git status -sb` (or `git rev-list --count @{u}..HEAD`, when an upstream is set) and push only when the branch is ahead. When it is already in sync, there is nothing to push.
 
 ### 9. Report
 
@@ -155,14 +177,15 @@ Per the project's honesty rule: if you skipped a check or only inspected somethi
 ## Quick reference
 
 ```
-git rev-parse --abbrev-ref HEAD              # 1. record current branch
+git symbolic-ref --quiet --short HEAD        # 1. current branch; fails on detached HEAD
 git status --porcelain                       # 1. must be empty, else STOP
 gh pr view --json baseRefName -q .baseRefName  # 2. resolve <base> (PR target)
-#   empty -> repo default branch; still empty -> ask. current branch must NOT be <base>
-git fetch origin <base>                      # 3. fetch only
-git merge origin/<base>                      # 4. merge into current branch
-#   conflicts -> resolving-merge-conflicts skill + data-loss gate (5)
-pnpm type-check                              # 6. must be green
-git commit --no-edit                         # 7. only if conflicts were resolved
-git push origin HEAD                         # 8. current branch only, never <base>
+#   empty -> repo default branch; still empty -> ask. validate name; current branch must NOT be <base>
+#   resolve <base-remote> (the remote hosting the PR base; upstream in a fork, not origin)
+git fetch "<base-remote>" "<base>"           # 3. fetch only
+git merge "<base-remote>/<base>"             # 4. merge into current branch
+#   conflicts -> resolving-merge-conflicts skill (stop before it commits) + data-loss gate (5)
+pnpm type-check                              # 6. acceptance gate (/done where defined); must be green
+git commit --no-edit  # or: git add -A && git commit  # 7. commit the merge AND any step-6 repairs
+git push <branch-remote> HEAD                # 8. current branch only, never <base>
 ```
