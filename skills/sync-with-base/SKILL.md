@@ -156,23 +156,20 @@ Push **the branch you recorded in step 1** to its own publication remote, never 
 
 Bind the destination ref yourself; do not let git's config choose it. A bare `git push` follows `push.default` and `remote.<name>.push`, so with `push.default=upstream` a branch tracking `<base-remote>/<base>` would push straight to the base even though step 2's guard passed on the local branch name.
 
-Work out the destination branch, `<dest>`, from the PR itself, not from the local name or the tracking config. The PR knows the exact branch it updates:
+The destination is `<branch>`, the branch you recorded in step 1, pushed to the same name on `<branch-remote>`. Do not derive it from the tracking config or from a no-argument `gh pr view`: both follow the branch's upstream, which can point at an integration branch or the base, so either can silently resolve to a branch other than the one you are on. Two guards make this safe:
+
+- **Refuse if `<branch>` equals `<base>`.** That is the never-push-base rule, and no config may override it.
+- **Stop and ask when a signal disagrees.** If the branch's configured upstream, or the PR GitHub associates with this branch, names a remote branch other than `<branch>`, the destination is ambiguous. Ask the user which remote branch this work should update rather than guessing. Silently fast-forwarding an unrelated branch is exactly the failure to avoid.
+
+With the destination confirmed, push the current branch to its own name:
 
 ```bash
-gh pr view --json headRefName -q .headRefName   # the PR's head branch = <dest>
-```
-
-Use that as `<dest>`, and take `<branch-remote>` to be the remote for the PR's head repository (your fork in a fork PR). Resolving from the PR is what makes this correct: a local checkout named `review-99`, or a `feature-x` that tracks `origin/integration` rather than its own PR head, would otherwise push to the wrong ref and leave the PR unchanged. If there is no PR yet, the branch is unpublished and `<dest>` is `<branch>`, which the push creates. Either way, require `<dest>` to pass the step 2 allowlist and **refuse if `<dest>` equals `<base>`**: that is the never-push-base rule, and no config may override it.
-
-Push with an explicit `source:destination` refspec:
-
-```bash
-git push "<branch-remote>" "<branch>:refs/heads/<dest>"
+git push "<branch-remote>" "<branch>:refs/heads/<branch>"
 ```
 
 Do not use `--force` / `--force-with-lease`. A merge only adds history, so a normal push fast-forwards. If the remote rejects the push as non-fast-forward, someone else pushed to this branch meanwhile: stop and tell the user rather than forcing.
 
-If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its destination. Decide whether to push by comparing against `<branch-remote>/<dest>`: fetch it, and if that remote-tracking ref does not exist (an unpublished branch), treat it as zero remote commits and push. Otherwise count with `git rev-list --count "<branch-remote>/<dest>".."<branch>"` and push the same explicit refspec only when the branch is ahead. When it is already in sync, there is nothing to push.
+If step 4 reported "Already up to date", there was no merge, but the branch can still be ahead of its destination. Decide whether to push by comparing against `<branch-remote>/<branch>`: fetch it, and if that remote-tracking ref does not exist (an unpublished branch), treat it as zero remote commits and push. Otherwise count with `git rev-list --count "<branch-remote>/<branch>".."<branch>"` and push the same explicit refspec only when the branch is ahead. When it is already in sync, there is nothing to push.
 
 ### 9. Report
 
@@ -200,5 +197,5 @@ git merge "<base-remote>/<base>"             # 4. merge into current branch
 pnpm type-check                              # 6. acceptance gate (/done where defined, same <base>); green
 #   7. commit: merge -> git commit --no-edit; clean merge + step-6 repairs -> git add -A && git commit
 #      clean merge, no repairs -> nothing to commit, skip
-git push "<branch-remote>" "<branch>:refs/heads/<dest>"  # 8. <dest>=PR head ref; never <base>
+git push "<branch-remote>" "<branch>:refs/heads/<branch>"  # 8. same name; never <base>; ask if config disagrees
 ```
