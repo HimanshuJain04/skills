@@ -156,7 +156,13 @@ Push **the branch you recorded in step 1** to its own publication remote, never 
 
 Bind the destination ref yourself; do not let git's config choose it. A bare `git push` follows `push.default` and `remote.<name>.push`, so with `push.default=upstream` a branch tracking `<base-remote>/<base>` would push straight to the base even though step 2's guard passed on the local branch name.
 
-Work out the destination branch, `<dest>`. If the current branch has a configured upstream on `<branch-remote>`, `<dest>` is that upstream's branch name (`git rev-parse --abbrev-ref '@{upstream}'`, then strip the remote prefix). This matters when the local name differs from the branch the PR actually tracks: a local `review-99` tracking `<branch-remote>/feature-x` must update `feature-x`, not create `review-99`. If there is no upstream, the branch is unpublished and `<dest>` is `<branch>`, which the push creates. Either way, require `<dest>` to pass the step 2 allowlist and **refuse if `<dest>` equals `<base>`**: that is the never-push-base rule, and no config may override it.
+Work out the destination branch, `<dest>`, from the PR itself, not from the local name or the tracking config. The PR knows the exact branch it updates:
+
+```bash
+gh pr view --json headRefName -q .headRefName   # the PR's head branch = <dest>
+```
+
+Use that as `<dest>`, and take `<branch-remote>` to be the remote for the PR's head repository (your fork in a fork PR). Resolving from the PR is what makes this correct: a local checkout named `review-99`, or a `feature-x` that tracks `origin/integration` rather than its own PR head, would otherwise push to the wrong ref and leave the PR unchanged. If there is no PR yet, the branch is unpublished and `<dest>` is `<branch>`, which the push creates. Either way, require `<dest>` to pass the step 2 allowlist and **refuse if `<dest>` equals `<base>`**: that is the never-push-base rule, and no config may override it.
 
 Push with an explicit `source:destination` refspec:
 
